@@ -50,35 +50,23 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 func (s *Service) SeedAdminUsers(ctx context.Context) error {
-	count, err := s.repo.CountUsers(ctx)
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
-	// Create admin
-	_, err = s.Create(ctx, CreateUserRequest{
-		Name:     "Rohit Admin",
-		Email:    "admin@restorefine.co.uk",
-		Password: "Admin123!",
-		Role:     "admin",
-	})
-	if err != nil {
-		return fmt.Errorf("seed admin: %w", err)
+	seed := []struct{ name, email, role string }{
+		{"Rohit", "rohit@restorefine.co.uk", "admin"},
+		{"Rohin", "rohin@restorefine.co.uk", "staff"},
+		{"Harpreet", "harpreet@restorefine.co.uk", "staff"},
+		{"Arpan", "arpan@restorefine.co.uk", "video_editor"},
+		{"Prabish", "prabish@restorefine.co.uk", "developer_designer"},
+		{"Kreshina", "kreshina@restorefine.co.uk", "project_manager"},
 	}
 
-	// Create staff
-	_, err = s.Create(ctx, CreateUserRequest{
-		Name:     "Rohit",
-		Email:    "rohit@restorefine.co.uk",
-		Password: "Staff123!",
-		Role:     "staff",
-	})
-	if err != nil {
-		return fmt.Errorf("seed staff: %w", err)
+	for _, u := range seed {
+		hash, err := auth.HashPassword("12345678")
+		if err != nil {
+			return fmt.Errorf("hash for %s: %w", u.email, err)
+		}
+		if err := s.repo.UpsertSeedUser(ctx, u.name, u.email, hash, u.role); err != nil {
+			return fmt.Errorf("upsert %s: %w", u.email, err)
+		}
 	}
-
 	return nil
 }

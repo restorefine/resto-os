@@ -1,8 +1,20 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
+import { getMe } from "@/lib/auth";
+import { useStore } from "@/store/useStore";
+
+function AuthInit() {
+  const setCurrentUser = useStore((s) => s.setCurrentUser);
+  useEffect(() => {
+    getMe()
+      .then((user) => setCurrentUser(user))
+      .catch(() => {});
+  }, [setCurrentUser]);
+  return null;
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -19,6 +31,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <AuthInit />
       {children}
       <Toaster
         position="top-right"

@@ -10,7 +10,7 @@ export function useAuth() {
   const queryClient = useQueryClient();
   const { setCurrentUser } = useStore();
 
-  const { data: user, isLoading } = useQuery({
+  const { data: user, isLoading } = useQuery<ReturnType<typeof getMe> extends Promise<infer T> ? T : never>({
     queryKey: ["me"],
     queryFn: getMe,
     retry: false,

@@ -155,6 +155,43 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	response.Ok(w, map[string]string{"message": "token refreshed"}, "")
 }
 
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	claims := GetClaims(r)
+	if claims == nil {
+		response.Unauthorized(w, "authentication required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var u userRecord
+	err := h.db.QueryRow(ctx,
+		`SELECT id, name, email, password_hash, role, client_id, must_change_password FROM users WHERE id = $1`,
+		claims.UserID,
+	).Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.ClientID, &u.MustChangePassword)
+	if err != nil {
+		response.NotFound(w, "user not found")
+		return
+	}
+
+	clientID := ""
+	if u.ClientID != nil {
+		clientID = *u.ClientID
+	}
+
+	response.Ok(w, map[string]interface{}{
+		"user": map[string]interface{}{
+			"id":                   u.ID,
+			"name":                 u.Name,
+			"email":                u.Email,
+			"role":                 u.Role,
+			"client_id":            clientID,
+			"must_change_password": u.MustChangePassword,
+		},
+	}, "")
+}
+
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("refresh_token"); err == nil {
 		h.svc.DeleteRefreshToken(r.Context(), cookie.Value)

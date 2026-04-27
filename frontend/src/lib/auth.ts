@@ -1,23 +1,23 @@
 import api from "./api";
 import { User } from "./types";
 
+// Backend wraps every response: { data: T, message: string }
+type ApiWrap<T> = { data: T; message: string };
+
 export async function login(email: string, password: string): Promise<User> {
-  const { data } = await api.post<{ user: User }>("/api/auth/login", {
+  const { data } = await api.post<ApiWrap<{ user: User }>>("/api/auth/login", {
     email,
     password,
   });
-  return data.user;
+  return data.data.user;
 }
 
-export async function portalLogin(
-  email: string,
-  password: string
-): Promise<User> {
-  const { data } = await api.post<{ user: User }>("/api/auth/portal/login", {
+export async function portalLogin(email: string, password: string): Promise<User> {
+  const { data } = await api.post<ApiWrap<{ user: User }>>("/api/auth/login", {
     email,
     password,
   });
-  return data.user;
+  return data.data.user;
 }
 
 export async function logout(): Promise<void> {
@@ -25,16 +25,16 @@ export async function logout(): Promise<void> {
 }
 
 export async function getMe(): Promise<User> {
-  const { data } = await api.get<{ user: User }>("/api/auth/me");
-  return data.user;
+  const { data } = await api.get<ApiWrap<{ user: User }>>("/api/auth/me");
+  return data.data.user;
 }
 
 export async function changePassword(
-  currentPassword: string,
+  oldPassword: string,
   newPassword: string
 ): Promise<void> {
   await api.post("/api/auth/change-password", {
-    currentPassword,
-    newPassword,
+    old_password: oldPassword,
+    new_password: newPassword,
   });
 }

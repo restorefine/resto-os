@@ -105,3 +105,31 @@ func (r *Repository) CountUsers(ctx context.Context) (int, error) {
 	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&count)
 	return count, err
 }
+
+func (r *Repository) UpsertSeedUser(ctx context.Context, name, email, passwordHash, role string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO users (name, email, password_hash, role)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (email) DO UPDATE SET
+		   name          = EXCLUDED.name,
+		   role          = EXCLUDED.role,
+		   password_hash = EXCLUDED.password_hash`,
+		name, email, passwordHash, role,
+	)
+	return err
+}
+
+// CreateClientUser creates a portal user with role=client and must_change_password=true.
+func (r *Repository) CreateClientUser(ctx context.Context, email, name, passwordHash, clientID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO users (name, email, password_hash, role, client_id, must_change_password)
+		 VALUES ($1, $2, $3, 'client', $4, TRUE)
+		 ON CONFLICT (email) DO NOTHING`,
+		name, email, passwordHash, clientID,
+	)
+	return err
+}
