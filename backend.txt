@@ -1,0 +1,505 @@
+You are building the Go backend API for AgencyOS — an internal 
+operating platform for RestoRefine Studios, a UK-based social 
+media agency in Glasgow.
+
+TECH STACK
+- Go 1.22+
+- Chi router (github.com/go-chi/chi/v5)
+- pgx/v5 (github.com/jackc/pgx/v5) — PostgreSQL driver
+- golang-jwt/jwt/v5 — JWT auth
+- golang.org/x/crypto/bcrypt — password hashing
+- go-playground/validator/v10 — request validation
+- joho/godotenv — env loading
+- pressly/goose/v3 — DB migrations
+- resend/resend-go/v2 — email sending
+- jung-kurt/gofpdf — PDF generation
+- golang.org/x/time/rate — rate limiting
+- stripe/stripe-go/v76 — Stripe payments
+- go-chi/cors — CORS middleware
+
+PROJECT STRUCTURE
+backend/
+├── cmd/
+│   └── server/
+│       └── main.go
+├── internal/
+│   ├── auth/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   └── middleware.go
+│   ├── clients/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   └── model.go
+│   ├── invoices/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   └── model.go
+│   ├── pipeline/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   └── model.go
+│   ├── content/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   └── model.go
+│   ├── videos/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   └── model.go
+│   ├── onboarding/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   └── model.go
+│   ├── quotes/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   └── model.go
+│   ├── contracts/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   └── model.go
+│   ├── portal/
+│   │   ├── handler.go
+│   │   └── service.go
+│   ├── users/
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   └── model.go
+│   ├── stream/
+│   │   └── handler.go              ← SSE real-time events
+│   └── webhooks/
+│       └── stripe.go               ← Stripe webhook handler
+├── pkg/
+│   ├── db/
+│   │   └── postgres.go             ← pgx connection pool
+│   ├── mailer/
+│   │   └── resend.go               ← email sending helpers
+│   ├── pdf/
+│   │   └── generator.go            ← quote + contract PDF
+│   ├── scheduler/
+│   │   └── jobs.go                 ← invoice reminder ticker
+│   ├── ratelimit/
+│   │   └── limiter.go              ← per-IP rate limiter
+│   └── response/
+│       └── json.go                 ← standard JSON response helpers
+├── migrations/
+│   ├── 001_create_users.sql
+│   ├── 002_create_clients.sql
+│   ├── 003_create_invoices.sql
+│   ├── 004_create_pipeline.sql
+│   ├── 005_create_content.sql
+│   ├── 006_create_videos.sql
+│   ├── 007_create_onboarding.sql
+│   ├── 008_create_quotes.sql
+│   ├── 009_create_contracts.sql
+│   └── 010_create_audit_log.sql
+├── .env
+├── Dockerfile
+├── fly.toml
+└── go.mod
+
+DATABASE SCHEMA
+
+-- Users (team + clients share this table, role differentiates)
+CREATE TABLE users (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                  TEXT NOT NULL,
+  email                 TEXT UNIQUE NOT NULL,
+  password              TEXT NOT NULL,
+  role                  TEXT NOT NULL DEFAULT 'staff',
+                        -- 'admin' | 'staff' | 'client'
+  client_id             UUID REFERENCES clients(id),
+                        -- only set when role = 'client'
+  must_change_password  BOOLEAN DEFAULT FALSE,
+  portal_activated_at   TIMESTAMPTZ,
+  last_login_at         TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE clients (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            TEXT NOT NULL,
+  contact_name    TEXT,
+  contact_email   TEXT,
+  contact_phone   TEXT,
+  package         TEXT NOT NULL,
+  monthly_value   NUMERIC(10,2),
+  status          TEXT DEFAULT 'active',
+  invoice_day     INT,
+  assigned_to     UUID REFERENCES users(id),
+  started_at      DATE,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE invoices (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       UUID REFERENCES clients(id) ON DELETE CASCADE,
+  amount          NUMERIC(10,2) NOT NULL,
+  due_date        DATE NOT NULL,
+  paid_at         TIMESTAMPTZ,
+  stripe_link     TEXT,
+  stripe_payment_id TEXT,
+  status          TEXT DEFAULT 'unpaid',
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE leads (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_name    TEXT NOT NULL,
+  contact_name    TEXT,
+  contact_email   TEXT,
+  value           NUMERIC(10,2),
+  stage           TEXT DEFAULT 'outreach',
+  next_action     TEXT,
+  notes           TEXT,
+  assigned_to     UUID REFERENCES users(id),
+  position        INT DEFAULT 0,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE content_items (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       UUID REFERENCES clients(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  type            TEXT,
+  due_date        TIMESTAMPTZ NOT NULL,
+  status          TEXT DEFAULT 'pending',
+  assigned_to     UUID REFERENCES users(id),
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE videos (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       UUID REFERENCES clients(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  platform        TEXT,
+  video_url       TEXT NOT NULL,
+  thumbnail_url   TEXT,
+  status          TEXT DEFAULT 'pending',
+  feedback        TEXT,
+  version         INT DEFAULT 1,
+  uploaded_by     UUID REFERENCES users(id),
+  approved_by     UUID REFERENCES users(id),
+  approved_at     TIMESTAMPTZ,
+  due_date        TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE onboarding_steps (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       UUID REFERENCES clients(id) ON DELETE CASCADE,
+  step            TEXT NOT NULL,
+  completed       BOOLEAN DEFAULT FALSE,
+  completed_at    TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE quotes (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       UUID REFERENCES clients(id),
+  reference       TEXT UNIQUE NOT NULL,
+  items           JSONB NOT NULL,
+  subtotal        NUMERIC(10,2),
+  vat             NUMERIC(10,2),
+  total           NUMERIC(10,2),
+  valid_until     DATE,
+  pdf_url         TEXT,
+  created_by      UUID REFERENCES users(id),
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE contracts (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       UUID REFERENCES clients(id),
+  package         TEXT,
+  start_date      DATE,
+  duration_months INT,
+  special_terms   TEXT,
+  pdf_url         TEXT,
+  created_by      UUID REFERENCES users(id),
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE audit_log (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID REFERENCES users(id),
+  action          TEXT NOT NULL,
+  entity_type     TEXT,
+  entity_id       UUID,
+  old_value       JSONB,
+  new_value       JSONB,
+  ip_address      TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+API ROUTES
+
+Auth (public)
+  POST   /api/auth/login
+  POST   /api/auth/refresh
+  POST   /api/auth/logout
+  POST   /api/auth/change-password      ← forced on first login
+
+Clients (admin + staff)
+  GET    /api/clients                   ← staff sees assigned only
+  POST   /api/clients                   ← admin only
+  GET    /api/clients/:id
+  PATCH  /api/clients/:id
+  DELETE /api/clients/:id               ← admin only
+  POST   /api/clients/:id/activate-portal ← admin only
+
+Invoices (admin only for list, staff for their clients)
+  GET    /api/invoices
+  GET    /api/invoices?clientId=xxx
+  POST   /api/invoices
+  PATCH  /api/invoices/:id/mark-paid
+  DELETE /api/invoices/:id
+
+Pipeline
+  GET    /api/pipeline
+  POST   /api/pipeline
+  GET    /api/pipeline/:id
+  PATCH  /api/pipeline/:id
+  PATCH  /api/pipeline/:id/move         ← change stage
+  DELETE /api/pipeline/:id
+
+Content Calendar
+  GET    /api/content?from=&to=&clientId=
+  POST   /api/content
+  PATCH  /api/content/:id
+  DELETE /api/content/:id
+
+Videos
+  GET    /api/videos
+  GET    /api/videos?clientId=xxx&status=pending
+  POST   /api/videos
+  PATCH  /api/videos/:id/approve
+  PATCH  /api/videos/:id/request-edit
+  DELETE /api/videos/:id
+
+Onboarding
+  GET    /api/onboarding/:clientId
+  PATCH  /api/onboarding/:clientId/step/:stepId
+
+Quotes
+  GET    /api/quotes
+  POST   /api/quotes/generate           ← creates + returns PDF
+  DELETE /api/quotes/:id
+
+Contracts
+  GET    /api/contracts
+  POST   /api/contracts/generate        ← creates + returns PDF
+  DELETE /api/contracts/:id
+
+Users (admin only)
+  GET    /api/users
+  POST   /api/users
+  PATCH  /api/users/:id
+  DELETE /api/users/:id
+
+Dashboard (aggregated)
+  GET    /api/dashboard                 ← MRR, unpaid total,
+                                           pipeline value,
+                                           urgent tasks count,
+                                           pending videos count
+
+Stream (SSE)
+  GET    /api/stream                    ← realtime event stream
+
+Webhooks (public but signature verified)
+  POST   /api/webhooks/stripe
+
+Portal (client role only)
+  GET    /api/portal/me                 ← their client data
+  GET    /api/portal/invoices
+  GET    /api/portal/contract
+  GET    /api/portal/videos
+  PATCH  /api/portal/videos/:id/approve
+  PATCH  /api/portal/videos/:id/request-edit
+  GET    /api/portal/content
+
+Health
+  GET    /health                        ← Fly.io health check
+
+AUTHENTICATION IMPLEMENTATION
+
+JWT Claims structure:
+  userID    string
+  email     string
+  role      string   (admin | staff | client)
+  clientID  string   (only for client role)
+  exp       int64
+
+Access token:  15 minutes
+Refresh token: 7 days (stored in DB, rotated on use)
+
+Cookie settings:
+  httpOnly: true
+  Secure:   true
+  SameSite: Strict
+  Path:     /
+
+Bcrypt cost factor: 12
+
+Role middleware:
+  RequireAdmin  → blocks staff and client
+  RequireStaff  → allows admin and staff, blocks client
+  RequireClient → allows client role only
+  OwnerOrAdmin  → allows if assigned_to = userID OR role = admin
+
+SECURITY REQUIREMENTS
+- All routes except /api/auth/* and /health require valid JWT
+- Rate limiting: 200 req/min global, 5/min on login endpoint
+- Login lockout: after 5 failed attempts, lock IP for 15 minutes
+- CORS: allow only NEXT_PUBLIC_FRONTEND_URL
+- Request body limit: 10MB max
+- All DB queries use parameterised statements (pgx default)
+- Stripe webhook signature verified with stripe.ConstructEvent()
+- Audit log written on: invoice paid, contract generated,
+  quote generated, portal activated, video approved,
+  client created/deleted, user created/deleted
+
+MIDDLEWARE STACK (applied in order)
+  1. CORS
+  2. Request size limiter (10MB)
+  3. Rate limiter (per IP)
+  4. Request logger
+  5. Recoverer (catches panics)
+  6. JWT auth (on protected routes)
+  7. Role guard (per route group)
+
+REAL-TIME SSE
+GET /api/stream
+  → Client opens EventSource connection
+  → Keep-alive ping every 30 seconds
+  → Events pushed on:
+    invoice_paid        { invoiceID, clientName, amount }
+    video_approved      { videoID, clientName, title }
+    video_edit_requested { videoID, clientName, feedback }
+    lead_moved          { leadID, company, fromStage, toStage }
+    portal_activated    { clientID, clientName }
+  → Use sync.Map to store active SSE connections
+  → Broadcast helper sends to all connected clients
+
+PORTAL ACTIVATION FLOW
+POST /api/clients/:id/activate-portal
+  1. Verify all onboarding steps completed
+     → If not → 400 "Onboarding incomplete"
+  2. Check portal not already active
+     → If yes → 409 "Portal already active"
+  3. Generate 12-char temp password (crypto/rand)
+  4. Hash with bcrypt cost 12
+  5. Create user record:
+     role = 'client'
+     client_id = this client's ID
+     must_change_password = true
+  6. Send welcome email via Resend with credentials
+  7. Update client portal_activated_at = NOW()
+  8. Write audit log entry
+  9. Broadcast SSE event portal_activated
+  10. Return 201
+
+STRIPE INTEGRATION
+  On invoice creation:
+    → Create Stripe Payment Link
+    → Store link URL in invoices.stripe_link
+
+  Webhook handler POST /api/webhooks/stripe:
+    → Verify signature
+    → On payment_intent.succeeded:
+        Mark invoice paid
+        Write audit log
+        Send confirmation email to client
+        Broadcast SSE event invoice_paid
+    → On payment_intent.payment_failed:
+        Send retry email to client
+        Notify team via email
+
+INVOICE SCHEDULER
+  Runs every 24 hours via time.Ticker in goroutine
+  Checks invoices where:
+    due_date = TODAY and status = 'unpaid'
+    → Send reminder email to client with payment link
+  Checks invoices where:
+    due_date < TODAY and status = 'unpaid'
+    → Update status to 'overdue'
+    → Notify Rohit via email
+
+PDF GENERATION
+  Quotes and contracts generated server-side with gofpdf
+  Include RestoRefine Studios branding
+  Stored temporarily, returned as file download
+  Filename: quote-REF-DATE.pdf / contract-CLIENT-DATE.pdf
+
+EMAIL TEMPLATES (via Resend)
+  welcome_portal     → client portal activation
+  invoice_reminder   → payment due today
+  invoice_overdue    → payment overdue
+  invoice_paid       → payment confirmation
+  video_review       → new video pending approval
+  edit_requested     → video edit request with feedback
+
+ENVIRONMENT VARIABLES
+  DATABASE_URL=
+  JWT_SECRET=
+  RESEND_API_KEY=
+  STRIPE_SECRET_KEY=
+  STRIPE_WEBHOOK_SECRET=
+  ALLOWED_ORIGIN=
+  PORT=8080
+  APP_ENV=production
+
+DEPLOYMENT (Fly.io)
+  Region: lhr (London)
+  VM: shared-cpu-1x, 512MB RAM
+  Postgres: Fly managed, same region, private network
+  Health check: GET /health every 15 seconds
+  Auto-restart on health check failure
+  Secrets via: fly secrets set KEY=VALUE
+
+CODING STANDARDS
+- Follow repository pattern strictly
+  handler → service → repository → database
+- All handlers return standardised JSON:
+  success: { data: {}, message: "" }
+  error:   { error: "", code: "" }
+- All errors logged with context
+- All DB operations use context with timeout (5 seconds)
+- Use pgx.Pool not single connection
+- No global variables except DB pool and config
+- Write audit log entry for every state-changing operation
+- Every function has a single responsibility
+- No business logic in handlers
+- No DB queries in handlers or services directly
+
+Build one module at a time in this order:
+1. Database connection + migrations
+2. Auth (login, JWT, middleware, refresh, logout)
+3. Users CRUD
+4. Clients CRUD
+5. Invoices + mark paid
+6. Dashboard aggregate endpoint
+7. Pipeline CRUD + move
+8. Content calendar CRUD
+9. Videos + approval flow
+10. Onboarding steps
+11. Portal activation + client auth
+12. Quote PDF generator
+13. Contract PDF generator
+14. Stripe webhook
+15. SSE stream
+16. Invoice scheduler
+17. Health check + Dockerfile + fly.toml
+
+
+
+dont host it yet... also i have made few changes on the ui so make the changes on backend accordingly...
