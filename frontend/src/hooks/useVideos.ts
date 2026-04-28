@@ -5,19 +5,38 @@ import api from "@/lib/api";
 import { Video, VideoComment, VideoProductionStage } from "@/lib/types";
 import { MOCK_VIDEOS, MOCK_VIDEO_COMMENTS } from "@/lib/mock-data";
 
+type W<T> = { data: T; message: string };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapVideo(r: any): Video {
+  return {
+    id: r.id,
+    clientId: r.client_id ?? r.clientId ?? "",
+    clientName: r.client_name ?? r.clientName ?? "",
+    title: r.title ?? "",
+    platform: r.platform ?? "instagram",
+    videoUrl: r.video_url ?? r.videoUrl ?? "#",
+    status: r.status ?? "pending",
+    productionStage: r.production_stage ?? r.productionStage ?? "scripting",
+    dueDate: r.due_date ?? r.dueDate ?? "",
+    feedback: r.feedback,
+    createdAt: r.created_at ?? r.createdAt ?? "",
+  };
+}
+
 async function fetchVideos(): Promise<Video[]> {
-  const { data } = await api.get<{ videos: Video[] }>("/api/videos");
-  return data.videos;
+  const { data } = await api.get<W<{ videos: unknown[] }>>("/api/videos");
+  return (data.data.videos ?? []).map(mapVideo);
 }
 
 async function approveVideo(id: string): Promise<Video> {
-  const { data } = await api.post<{ video: Video }>(`/api/videos/${id}/approve`);
-  return data.video;
+  const { data } = await api.post<W<{ video: unknown }>>(`/api/videos/${id}/approve`);
+  return mapVideo(data.data.video);
 }
 
 async function requestEdit(id: string, feedback: string): Promise<Video> {
-  const { data } = await api.post<{ video: Video }>(`/api/videos/${id}/request-edit`, { feedback });
-  return data.video;
+  const { data } = await api.post<W<{ video: unknown }>>(`/api/videos/${id}/request-edit`, { feedback });
+  return mapVideo(data.data.video);
 }
 
 export function useVideos() {

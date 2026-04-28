@@ -18,6 +18,11 @@ func NewHandler(svc *Service) *Handler {
 
 func (h *Handler) GetByClient(w http.ResponseWriter, r *http.Request) {
 	clientID := chi.URLParam(r, "clientId")
+	// Auto-create default steps if none exist yet (idempotent)
+	if err := h.svc.EnsureDefaultSteps(r.Context(), clientID); err != nil {
+		response.InternalError(w, "failed to initialise onboarding steps")
+		return
+	}
 	steps, err := h.svc.GetByClient(r.Context(), clientID)
 	if err != nil {
 		response.InternalError(w, "failed to get onboarding steps")

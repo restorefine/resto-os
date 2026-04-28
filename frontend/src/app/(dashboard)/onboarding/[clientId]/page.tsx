@@ -1,24 +1,18 @@
 "use client";
 
-import { use, useState } from "react";
+import { use } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
 import { useClient } from "@/hooks/useClients";
-import { MOCK_ONBOARDING } from "@/lib/mock-data";
-import { OnboardingChecklist } from "@/lib/types";
+import {
+  useOnboardingSteps,
+  useToggleOnboardingStep,
+  computeProgress,
+  STEP_META,
+  DEFAULT_STEP_KEYS,
+} from "@/hooks/useOnboarding";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
-const STEPS: { key: keyof Omit<OnboardingChecklist, "clientId">; label: string; desc: string }[] = [
-  { key: "contract", label: "Contract Signed", desc: "Client has signed the service agreement" },
-  { key: "payment", label: "First Payment Received", desc: "Initial invoice has been settled" },
-  { key: "brandAssets", label: "Brand Assets Collected", desc: "Logo, fonts, colour palette received" },
-  { key: "accessGranted", label: "Account Access Granted", desc: "Social media credentials shared" },
-  { key: "kickOffCall", label: "Kick-Off Call Completed", desc: "Strategy and expectations aligned" },
-  { key: "questionnaire", label: "Questionnaire Returned", desc: "Brand questionnaire completed by client" },
-  { key: "firstDraft", label: "First Content Draft Approved", desc: "Initial content batch signed off" },
-  { key: "firstPost", label: "First Post Published", desc: "Live on social — onboarding complete" },
-];
 
 export default function OnboardingPage({
   params,
@@ -28,30 +22,21 @@ export default function OnboardingPage({
   const { clientId } = use(params);
   const router = useRouter();
   const client = useClient(clientId);
+  const { data: steps = [], isLoading } = useOnboardingSteps(clientId);
+  const toggleStep = useToggleOnboardingStep(clientId);
 
-  const [checklist, setChecklist] = useState<OnboardingChecklist>(
-    MOCK_ONBOARDING[clientId] ?? {
-      clientId,
-      contract: false,
-      payment: false,
-      brandAssets: false,
-      accessGranted: false,
-      kickOffCall: false,
-      questionnaire: false,
-      firstDraft: false,
-      firstPost: false,
+  const progress = computeProgress(steps);
+  const completedCount = steps.filter((s) => s.completed).length;
+
+  const handleToggle = async (stepId: string, current: boolean) => {
+    const step = steps.find((s) => s.id === stepId);
+    const label = step ? (STEP_META[step.step]?.label ?? step.step) : "Step";
+    try {
+      await toggleStep.mutateAsync({ stepId, completed: !current });
+      toast.success(!current ? `✓ ${label}` : `Unchecked: ${label}`);
+    } catch {
+      toast.error("Failed to update step.");
     }
-  );
-
-  const completedCount = STEPS.filter((s) => checklist[s.key]).length;
-  const progress = Math.round((completedCount / STEPS.length) * 100);
-
-  const toggle = (key: keyof Omit<OnboardingChecklist, "clientId">) => {
-    const next = { ...checklist, [key]: !checklist[key] };
-    setChecklist(next);
-    // await api.put(`/api/clients/${clientId}/onboarding`, next);
-    const label = STEPS.find((s) => s.key === key)?.label ?? key;
-    toast.success(next[key] ? `✓ ${label}` : `Unchecked: ${label}`);
   };
 
   if (!client) {
@@ -82,45 +67,76 @@ export default function OnboardingPage({
           <p className="text-sm font-bold text-gray-900">Progress</p>
           <p className="text-2xl font-black text-black">{progress}%</p>
         </div>
-        <div className="h-2 bg-gray-100">
+        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
             className={cn(
-              "h-full transition-all duration-500",
+              "h-full rounded-full transition-all duration-500",
               progress === 100 ? "bg-green-600" : "bg-red-600"
             )}
             style={{ width: `${progress}%` }}
           />
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          {completedCount} of {STEPS.length} steps complete
+          {completedCount} of {DEFAULT_STEP_KEYS.length} steps complete
           {progress === 100 && " — ready to activate portal"}
         </p>
       </div>
 
-      {/* Steps */}
+      {/* Steps — always shows all 5 */}
       <div className="border border-gray-200 divide-y divide-gray-100">
-        {STEPS.map((step, i) => {
-          const done = checklist[step.key];
+        {DEFAULT_STEP_KEYS.map((key, i) => {
+          const meta = STEP_META[key];
+          const step = steps.find((s) => s.step === key);
+          const done = step?.completed ?? false;
+          const isStub = !isLoading && !step;
+
           return (
             <button
-              key={step.key}
-              onClick={() => toggle(step.key)}
-              className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer text-left"
+              key={key}
+              onClick={() => step && handleToggle(step.id, done)}
+              disabled={!step || toggleStep.isPending || isLoading}
+              className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors text-left disabled:cursor-default"
             >
               <span className="text-[11px] font-mono text-gray-300 w-5 shrink-0">
                 {String(i + 1).padStart(2, "0")}
               </span>
-              {done ? (
+
+              {isLoading ? (
+                <div className="w-[18px] h-[18px] rounded-full bg-gray-100 animate-pulse shrink-0" />
+              ) : done ? (
                 <CheckCircle2 size={18} className="text-green-600 shrink-0" />
               ) : (
-                <Circle size={18} className="text-gray-300 shrink-0" />
+                <Circle size={18} className={cn("shrink-0", isStub ? "text-gray-100" : "text-gray-300")} />
               )}
-              <div className="min-w-0">
-                <p className={cn("text-sm font-semibold", done ? "text-gray-900" : "text-gray-500")}>
-                  {step.label}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">{step.desc}</p>
+
+              <div className="min-w-0 flex-1">
+                {isLoading ? (
+                  <div className="space-y-1.5">
+                    <div className="h-3.5 bg-gray-100 rounded animate-pulse w-36" />
+                    <div className="h-2.5 bg-gray-100 rounded animate-pulse w-52" />
+                  </div>
+                ) : (
+                  <>
+                    <p className={cn(
+                      "text-sm font-semibold",
+                      done ? "text-gray-900" : isStub ? "text-gray-300" : "text-gray-600"
+                    )}>
+                      {meta.label}
+                    </p>
+                    <p className={cn("text-xs mt-0.5", isStub ? "text-gray-200" : "text-gray-400")}>
+                      {meta.desc}
+                    </p>
+                  </>
+                )}
               </div>
+
+              {!isLoading && done && step?.completed_at && (
+                <span className="text-[10px] text-gray-400 shrink-0">
+                  {new Date(step.completed_at).toLocaleDateString("en-GB", {
+                    day: "numeric", month: "short",
+                  })}
+                </span>
+              )}
             </button>
           );
         })}

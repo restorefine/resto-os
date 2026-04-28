@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -25,7 +26,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []Lead{}
 	}
-	response.Ok(w, list, "")
+	response.Ok(w, map[string]any{"leads": list}, "")
 }
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
@@ -35,21 +36,27 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		response.NotFound(w, "lead not found")
 		return
 	}
-	response.Ok(w, lead, "")
+	response.Ok(w, map[string]any{"lead": lead}, "")
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	log.Println("[pipeline] POST /api/pipeline")
 	var req CreateLeadRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("[pipeline] decode error: %v", err)
 		response.BadRequest(w, "invalid request body", "BAD_REQUEST")
 		return
 	}
+	log.Printf("[pipeline] Create: company=%q stage=%q assigned_to=%v value=%v",
+		req.CompanyName, req.Stage, req.AssignedTo, req.Value)
 	lead, err := h.svc.Create(r.Context(), req)
 	if err != nil {
+		log.Printf("[pipeline] Create error: %v", err)
 		response.BadRequest(w, err.Error(), "VALIDATION_ERROR")
 		return
 	}
-	response.Created(w, lead, "lead created")
+	log.Printf("[pipeline] Created lead id=%s company=%q", lead.ID, lead.CompanyName)
+	response.Created(w, map[string]any{"lead": lead}, "lead created")
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +71,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		response.InternalError(w, "failed to update lead")
 		return
 	}
-	response.Ok(w, lead, "lead updated")
+	response.Ok(w, map[string]any{"lead": lead}, "lead updated")
 }
 
 func (h *Handler) Move(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +86,7 @@ func (h *Handler) Move(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error(), "VALIDATION_ERROR")
 		return
 	}
-	response.Ok(w, lead, "lead moved")
+	response.Ok(w, map[string]any{"lead": lead}, "lead moved")
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {

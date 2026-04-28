@@ -26,7 +26,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []Invoice{}
 	}
-	response.Ok(w, list, "")
+	response.Ok(w, map[string]any{"invoices": list}, "")
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +40,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error(), "VALIDATION_ERROR")
 		return
 	}
-	response.Created(w, inv, "invoice created")
+	response.Created(w, map[string]any{"invoice": inv}, "invoice created")
 }
 
 func (h *Handler) MarkPaid(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +50,7 @@ func (h *Handler) MarkPaid(w http.ResponseWriter, r *http.Request) {
 		response.InternalError(w, "failed to mark invoice as paid")
 		return
 	}
-	response.Ok(w, inv, "invoice marked as paid")
+	response.Ok(w, map[string]any{"invoice": inv}, "invoice marked as paid")
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {

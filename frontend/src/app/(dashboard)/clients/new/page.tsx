@@ -20,6 +20,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useCreateClient } from "@/hooks/useClients";
+import { useCreateLead } from "@/hooks/usePipeline";
 import { cn } from "@/lib/utils";
 
 const schema = z.object({
@@ -58,6 +59,7 @@ const ONBOARDING_STEPS = [
 export default function NewClientPage() {
   const router = useRouter();
   const createClient = useCreateClient();
+  const createLead = useCreateLead();
   const [selectedPackage, setSelectedPackage] = useState<string>("");
 
   const {
@@ -78,11 +80,36 @@ export default function NewClientPage() {
   const watchedInvoiceDay = watch("invoiceDay");
 
   const onSubmit = async (data: FormData) => {
+    console.log("[NewClient] form data:", data);
     try {
-      await createClient.mutateAsync(data);
-      toast.success(`${data.name} added successfully`);
+      const result = await createClient.mutateAsync(data);
+      console.log("[NewClient] success:", result);
+
+      // Auto-create a pipeline entry at "signed" stage.
+      // The client is already signed — this ensures they're visible
+      // in the pipeline with the correct assigned team member.
+      try {
+        await createLead.mutateAsync({
+          companyName: data.name,
+          contactEmail: data.email,
+          value: data.monthlyValue,
+          assignedTo: data.assignedTo,
+          stage: "signed",
+          nextAction: "Begin onboarding",
+          notes: data.notes,
+        });
+      } catch (leadErr) {
+        console.warn("[NewClient] pipeline entry failed (non-fatal):", leadErr);
+      }
+
+      toast.success(`${data.name} added and reflected in pipeline`);
       router.push("/clients");
-    } catch {
+    } catch (err) {
+      console.error("[NewClient] error:", err);
+      // @ts-expect-error axios error shape
+      console.error("[NewClient] response:", err?.response?.data);
+      // @ts-expect-error axios error shape
+      console.error("[NewClient] status:", err?.response?.status);
       toast.error("Failed to add client. Please try again.");
     }
   };

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"math/big"
 	"strings"
 
@@ -41,10 +42,18 @@ func (s *Service) GetByID(ctx context.Context, id string) (*Client, error) {
 }
 
 func (s *Service) Create(ctx context.Context, req CreateClientRequest) (*Client, error) {
+	log.Printf("[clients/svc] Create: name=%q package=%q", req.Name, req.Package)
 	if err := s.validate.Struct(req); err != nil {
+		log.Printf("[clients/svc] validation failed: %v", err)
 		return nil, fmt.Errorf("validation: %w", err)
 	}
-	return s.repo.Create(ctx, req)
+	c, err := s.repo.Create(ctx, req)
+	if err != nil {
+		log.Printf("[clients/svc] repo.Create error: %v", err)
+		return nil, err
+	}
+	log.Printf("[clients/svc] repo.Create OK → id=%s", c.ID)
+	return c, nil
 }
 
 func (s *Service) Update(ctx context.Context, id string, req UpdateClientRequest) (*Client, error) {

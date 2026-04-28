@@ -2,6 +2,8 @@ package clients
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,6 +64,9 @@ func (r *Repository) Create(ctx context.Context, req CreateClientRequest) (*Clie
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	log.Printf("[clients/repo] INSERT name=%q package=%q email=%v monthly_value=%v invoice_day=%v assigned_to=%v",
+		req.Name, req.Package, req.ContactEmail, req.MonthlyValue, req.InvoiceDay, req.AssignedTo)
+
 	var c Client
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO clients (name, contact_name, contact_email, contact_phone, package, monthly_value, invoice_day, assigned_to, started_at)
@@ -74,7 +79,12 @@ func (r *Repository) Create(ctx context.Context, req CreateClientRequest) (*Clie
 	).Scan(&c.ID, &c.Name, &c.ContactName, &c.ContactEmail, &c.ContactPhone,
 		&c.Package, &c.MonthlyValue, &c.MonthlyProgress, &c.Status, &c.InvoiceDay,
 		&c.AssignedTo, &c.PortalActivatedAt, &c.StartedAt, &c.CreatedAt)
-	return &c, err
+	if err != nil {
+		log.Printf("[clients/repo] INSERT error: %v", err)
+		return nil, fmt.Errorf("failed to insert client: %w", err)
+	}
+	log.Printf("[clients/repo] INSERT OK → id=%s", c.ID)
+	return &c, nil
 }
 
 func (r *Repository) Update(ctx context.Context, id string, req UpdateClientRequest) (*Client, error) {

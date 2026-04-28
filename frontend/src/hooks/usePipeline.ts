@@ -5,24 +5,66 @@ import api from "@/lib/api";
 import { Lead, PipelineStage } from "@/lib/types";
 import { MOCK_LEADS } from "@/lib/mock-data";
 
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapLead(r: any): Lead {
+  return {
+    id: r.id,
+    companyName: r.company_name ?? r.companyName ?? "",
+    contactName: r.contact_name ?? r.contactName ?? "",
+    contactEmail: r.contact_email ?? r.contactEmail,
+    value: r.value ?? 0,
+    stage: r.stage ?? "outreach",
+    nextAction: r.next_action ?? r.nextAction ?? "",
+    assignedTo: r.assigned_to ?? r.assignedTo ?? "",
+    notes: r.notes,
+    createdAt: r.created_at ?? r.createdAt ?? "",
+    updatedAt: r.updated_at ?? r.updatedAt ?? "",
+  };
+}
+
 async function fetchLeads(): Promise<Lead[]> {
-  const { data } = await api.get<{ leads: Lead[] }>("/api/pipeline");
-  return data.leads;
+  const res = await api.get("/api/pipeline");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = res.data as any;
+  // handles { data: { leads: [] } } AND { data: [] } (direct array)
+  const list: unknown[] =
+    d?.data?.leads ?? (Array.isArray(d?.data) ? d.data : []);
+  console.log("[usePipeline] GET →", list.length, "leads");
+  return list.map(mapLead);
 }
 
 async function createLead(payload: Partial<Lead>): Promise<Lead> {
-  const { data } = await api.post<{ lead: Lead }>("/api/pipeline", payload);
-  return data.lead;
+  const body = {
+    company_name: payload.companyName,
+    contact_name: payload.contactName,
+    contact_email: payload.contactEmail,
+    value: payload.value,
+    stage: payload.stage,
+    next_action: payload.nextAction,
+    assigned_to: payload.assignedTo,  // stored as TEXT after migration 012
+    notes: payload.notes,
+  };
+  const res = await api.post("/api/pipeline", body);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = res.data as any;
+  return mapLead(d?.data?.lead ?? d?.data ?? d);
 }
 
 async function moveLead(id: string, stage: PipelineStage): Promise<Lead> {
-  const { data } = await api.patch<{ lead: Lead }>(`/api/pipeline/${id}/stage`, { stage });
-  return data.lead;
+  // backend route is PATCH /{id}/move  (not /stage)
+  const res = await api.patch(`/api/pipeline/${id}/move`, { stage });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = res.data as any;
+  return mapLead(d?.data?.lead ?? d?.data ?? d);
 }
 
 async function updateLead(id: string, payload: Partial<Lead>): Promise<Lead> {
-  const { data } = await api.put<{ lead: Lead }>(`/api/pipeline/${id}`, payload);
-  return data.lead;
+  // backend registers PATCH /{id}  (not PUT)
+  const res = await api.patch(`/api/pipeline/${id}`, payload);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = res.data as any;
+  return mapLead(d?.data?.lead ?? d?.data ?? d);
 }
 
 export function usePipeline() {

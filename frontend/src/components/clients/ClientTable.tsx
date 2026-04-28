@@ -97,16 +97,39 @@ export function ClientTable({ clients }: ClientTableProps) {
             </span>
           </span>
         ),
-        cell: ({ row }) => (
-          <div className="min-w-[200px]">
-            <p className="font-semibold text-gray-900">{row.original.name}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{row.original.email}</p>
-            <MonthlyProgressBar
-              progress={row.original.monthlyProgress}
-              status={row.original.status}
-            />
-          </div>
-        ),
+        cell: ({ row }) => {
+          const ob = row.original.onboardingProgress ?? 0;
+          return (
+            <div className="min-w-[200px]">
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-gray-900">{row.original.name}</p>
+                {ob < 100 && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[9px] font-bold text-amber-600 uppercase tracking-wide shrink-0">
+                    Onboarding
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">{row.original.email}</p>
+              <MonthlyProgressBar
+                progress={row.original.monthlyProgress}
+                status={row.original.status}
+              />
+              {ob < 100 && (
+                <div className="mt-1.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-400 rounded-full transition-all"
+                      style={{ width: `${ob}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-500 tabular-nums w-[28px] text-right shrink-0">
+                    {ob}%
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        },
       },
       { accessorKey: "package", header: "Package", cell: ({ row }) => (
         <span className="text-sm text-gray-600">{row.original.package}</span>

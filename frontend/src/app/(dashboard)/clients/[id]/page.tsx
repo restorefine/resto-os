@@ -2,32 +2,30 @@
 
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Globe, FileText, CheckCircle2, Circle } from "lucide-react";
+import {
+  ArrowLeft, Globe, FileText, CheckCircle2, Circle, Mail, Phone,
+  CalendarDays, Banknote, UserCircle2, Clock,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useClient, useActivatePortal } from "@/hooks/useClients";
 import { useInvoices } from "@/hooks/useInvoices";
 import { useVideos } from "@/hooks/useVideos";
-import { MOCK_ONBOARDING } from "@/lib/mock-data";
+import {
+  useOnboardingSteps,
+  useToggleOnboardingStep,
+  computeProgress,
+  STEP_META,
+  DEFAULT_STEP_KEYS,
+} from "@/hooks/useOnboarding";
 import { ClientStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const STATUS_STYLES: Record<ClientStatus, string> = {
-  active: "bg-green-100 text-green-800",
-  paused: "bg-yellow-100 text-yellow-800",
-  churned: "bg-red-100 text-red-800",
+const STATUS_STYLES: Record<ClientStatus, { pill: string; dot: string }> = {
+  active:  { pill: "bg-green-100 text-green-700 border border-green-200",  dot: "bg-green-500" },
+  paused:  { pill: "bg-yellow-100 text-yellow-700 border border-yellow-200", dot: "bg-yellow-500" },
+  churned: { pill: "bg-red-100 text-red-700 border border-red-200",        dot: "bg-red-500" },
 };
-
-const ONBOARDING_STEPS = [
-  { key: "contract", label: "Contract signed" },
-  { key: "payment", label: "First payment received" },
-  { key: "brandAssets", label: "Brand assets collected" },
-  { key: "accessGranted", label: "Account access granted" },
-  { key: "kickOffCall", label: "Kick-off call completed" },
-  { key: "questionnaire", label: "Questionnaire returned" },
-  { key: "firstDraft", label: "First content draft approved" },
-  { key: "firstPost", label: "First post published" },
-] as const;
 
 export default function ClientDetailPage({
   params,
@@ -40,6 +38,8 @@ export default function ClientDetailPage({
   const { data: invoices = [] } = useInvoices();
   const { data: videos = [] } = useVideos();
   const activatePortal = useActivatePortal();
+  const { data: steps = [], isLoading: stepsLoading } = useOnboardingSteps(id);
+  const toggleStep = useToggleOnboardingStep(id);
 
   if (!client) {
     return (
@@ -51,7 +51,9 @@ export default function ClientDetailPage({
 
   const clientInvoices = invoices.filter((i) => i.clientId === id);
   const clientVideos = videos.filter((v) => v.clientId === id);
-  const onboarding = MOCK_ONBOARDING[id] ?? null;
+  const progress = computeProgress(steps);
+  const completedCount = steps.filter((s) => s.completed).length;
+  const st = STATUS_STYLES[client.status];
 
   const handleActivate = async () => {
     if (!confirm(`Activate portal for ${client.name}? This will send them a login email.`)) return;
@@ -63,56 +65,92 @@ export default function ClientDetailPage({
     }
   };
 
+  const handleToggle = async (stepId: string, current: boolean) => {
+    const step = steps.find((s) => s.id === stepId);
+    const label = step ? (STEP_META[step.step]?.label ?? step.step) : "Step";
+    try {
+      await toggleStep.mutateAsync({ stepId, completed: !current });
+      toast.success(!current ? `✓ ${label}` : `Unchecked: ${label}`);
+    } catch {
+      toast.error("Failed to update step.");
+    }
+  };
+
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-6xl space-y-6">
       {/* Back */}
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-900 mb-5 transition-colors"
+        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-900 transition-colors"
       >
         <ArrowLeft size={13} /> Back to clients
       </button>
 
-      {/* Header */}
-      <div className="border border-gray-200 p-6 mb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-[10px] tracking-[0.18em] uppercase text-gray-400 mb-1">
+      {/* ── Header card ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-6 py-5 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] tracking-[0.18em] uppercase text-gray-400 mb-1 font-semibold">
               {client.package}
             </p>
-            <h1 className="text-2xl font-black tracking-tight text-black">
+            <h1 className="text-2xl font-black tracking-tight text-gray-900 leading-none">
               {client.name}
             </h1>
-            <p className="text-sm text-gray-500 mt-0.5">Assigned to {client.assignedTo}</p>
+            <div className="flex items-center gap-2 mt-2">
+              <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", st.dot)} />
+              <span className={cn("text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full", st.pill)}>
+                {client.status}
+              </span>
+              <span className="text-xs text-gray-400">·</span>
+              <div className="flex items-center gap-1 text-xs text-gray-500">
+                <UserCircle2 size={12} />
+                {client.assignedTo}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span
-              className={cn(
-                "inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-                STATUS_STYLES[client.status]
-              )}
-            >
-              {client.status}
-            </span>
-            <span className="text-lg font-black text-black font-mono">
-              £{client.monthlyValue.toLocaleString("en-GB")}/mo
-            </span>
+
+          <div className="shrink-0 text-right">
+            <p className="text-2xl font-black text-gray-900 tabular-nums">
+              £{client.monthlyValue.toLocaleString("en-GB")}
+              <span className="text-sm font-semibold text-gray-400">/mo</span>
+            </p>
+            <div className="flex items-center justify-end gap-1.5 mt-1.5">
+              <Globe size={12} className={client.portalActive ? "text-green-500" : "text-gray-300"} />
+              <span className={cn("text-[11px] font-medium", client.portalActive ? "text-green-600" : "text-gray-400")}>
+                {client.portalActive ? "Portal active" : "Portal inactive"}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Portal status */}
-        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            <Globe size={14} className={client.portalActive ? "text-green-600" : "text-gray-400"} />
-            <span className={client.portalActive ? "text-green-700" : "text-gray-500"}>
-              {client.portalActive ? "Portal active" : "Portal inactive"}
-            </span>
+        {/* Sub-row: portal action + onboarding progress */}
+        <div className="px-6 py-3 bg-gray-50/70 border-t border-gray-100 flex items-center justify-between gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] tracking-[0.14em] uppercase text-gray-400 font-semibold">
+                Onboarding
+              </span>
+              <span className="text-[11px] font-bold text-gray-600 tabular-nums">
+                {completedCount}/{steps.length} steps · {progress}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-700",
+                  progress === 100 ? "bg-green-500" : "bg-red-600"
+                )}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
+
           {!client.portalActive && (
             <button
               onClick={handleActivate}
-              disabled={client.onboardingProgress < 100 || activatePortal.isPending}
-              className="flex items-center gap-1.5 bg-black hover:bg-gray-900 text-white text-[10px] tracking-[0.18em] uppercase font-bold px-3 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              disabled={progress < 100 || activatePortal.isPending}
+              title={progress < 100 ? "Complete all onboarding steps first" : undefined}
+              className="shrink-0 flex items-center gap-1.5 bg-gray-900 hover:bg-black text-white text-[10px] tracking-[0.18em] uppercase font-bold px-3 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               Activate Portal
             </button>
@@ -120,63 +158,185 @@ export default function ClientDetailPage({
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="overview">
-        <TabsList className="border-b border-gray-200 bg-transparent rounded-none p-0 h-auto mb-6 gap-0">
-          {["overview", "invoices", "videos", "onboarding"].map((tab) => (
+      {/* ── Two-column: Details + Checklist ──────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5">
+
+        {/* Client details card */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <p className="text-[10px] tracking-[0.18em] uppercase font-semibold text-gray-400">
+              Client Details
+            </p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            <DetailRow icon={<Mail size={13} />} label="Email" value={client.email} />
+            <DetailRow icon={<Phone size={13} />} label="Phone" value={client.phone ?? "—"} />
+            <DetailRow icon={<Banknote size={13} />} label="Monthly Value" value={`£${client.monthlyValue.toLocaleString("en-GB")}`} />
+            <DetailRow icon={<CalendarDays size={13} />} label="Invoice Day" value={`Day ${client.invoiceDay} of each month`} />
+            <DetailRow
+              icon={<Clock size={13} />}
+              label="Client Since"
+              value={new Date(client.createdAt).toLocaleDateString("en-GB", {
+                day: "numeric", month: "long", year: "numeric",
+              })}
+            />
+            {client.contractUrl && (
+              <div className="px-5 py-3.5 flex items-center gap-3">
+                <span className="text-gray-300 shrink-0"><FileText size={13} /></span>
+                <div className="min-w-0">
+                  <p className="text-[10px] tracking-[0.12em] uppercase font-semibold text-gray-400 mb-0.5">Contract</p>
+                  <a
+                    href={client.contractUrl}
+                    className="text-sm font-medium text-red-600 hover:text-red-700 hover:underline transition-colors"
+                  >
+                    View Contract →
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Onboarding checklist card */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <p className="text-[10px] tracking-[0.18em] uppercase font-semibold text-gray-400">
+              Onboarding Checklist
+            </p>
+            {progress === 100 ? (
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-green-600">
+                <CheckCircle2 size={14} className="text-green-500" /> Complete
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold text-gray-500">
+                {completedCount} of {steps.length} done
+              </span>
+            )}
+          </div>
+
+          <div className="divide-y divide-gray-50">
+              {DEFAULT_STEP_KEYS.map((key, i) => {
+                const meta = STEP_META[key];
+                // Match to real backend step if available
+                const step = steps.find((s) => s.step === key);
+                const done = step?.completed ?? false;
+                const isLoading = stepsLoading;
+                const isStub = !stepsLoading && !step; // backend hasn't seeded yet
+
+                return (
+                  <button
+                    key={key}
+                    onClick={() => step && handleToggle(step.id, done)}
+                    disabled={!step || toggleStep.isPending || isLoading}
+                    title={isStub ? "Restart the backend to activate this checklist" : undefined}
+                    className={cn(
+                      "w-full flex items-center gap-4 px-5 py-4 text-left transition-colors group",
+                      !step || isLoading ? "cursor-default" : "cursor-pointer",
+                      done ? "hover:bg-green-50/50" : step ? "hover:bg-gray-50" : ""
+                    )}
+                  >
+                    {/* Step number */}
+                    <span className="text-[10px] font-mono text-gray-300 w-4 shrink-0">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+
+                    {/* Icon */}
+                    {isLoading ? (
+                      <div className="w-5 h-5 rounded-full bg-gray-100 animate-pulse shrink-0" />
+                    ) : done ? (
+                      <CheckCircle2 size={20} className="text-green-500 shrink-0" />
+                    ) : (
+                      <Circle size={20} className={cn("shrink-0", isStub ? "text-gray-100" : "text-gray-200 group-hover:text-gray-300 transition-colors")} />
+                    )}
+
+                    {/* Text */}
+                    <div className="min-w-0 flex-1">
+                      {isLoading ? (
+                        <div className="space-y-1.5">
+                          <div className="h-3.5 bg-gray-100 rounded animate-pulse w-36" />
+                          <div className="h-2.5 bg-gray-100 rounded animate-pulse w-52" />
+                        </div>
+                      ) : (
+                        <>
+                          <p className={cn(
+                            "text-sm font-semibold leading-tight",
+                            done ? "text-gray-600 line-through decoration-gray-300"
+                              : isStub ? "text-gray-300"
+                              : "text-gray-800"
+                          )}>
+                            {meta.label}
+                          </p>
+                          <p className={cn("text-[11px] mt-0.5 leading-snug", isStub ? "text-gray-200" : "text-gray-400")}>
+                            {meta.desc}
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Right side */}
+                    {!isLoading && (
+                      done && step?.completed_at ? (
+                        <span className="text-[10px] text-green-500 font-medium shrink-0 bg-green-50 px-2 py-0.5 rounded-full">
+                          {new Date(step.completed_at).toLocaleDateString("en-GB", {
+                            day: "numeric", month: "short",
+                          })}
+                        </span>
+                      ) : step ? (
+                        <span className="text-[10px] text-gray-300 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                          Click to mark done
+                        </span>
+                      ) : null
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+        </div>
+      </div>
+
+      {/* ── Invoices + Videos tabs ───────────────────────────────── */}
+      <Tabs defaultValue="invoices">
+        <TabsList className="border-b border-gray-200 bg-transparent rounded-none p-0 h-auto gap-0">
+          {[
+            { value: "invoices", label: `Invoices${clientInvoices.length ? ` (${clientInvoices.length})` : ""}` },
+            { value: "videos",   label: `Videos${clientVideos.length ? ` (${clientVideos.length})` : ""}` },
+          ].map((tab) => (
             <TabsTrigger
-              key={tab}
-              value={tab}
+              key={tab.value}
+              value={tab.value}
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 pb-2.5 px-4 text-xs uppercase tracking-[0.14em] font-bold text-gray-400 data-[state=active]:bg-transparent"
             >
-              {tab}
+              {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {/* Overview */}
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <InfoBlock label="Email" value={client.email} />
-            <InfoBlock label="Phone" value={client.phone ?? "—"} />
-            <InfoBlock label="Invoice Day" value={`Day ${client.invoiceDay} of each month`} />
-            <InfoBlock label="Monthly Value" value={`£${client.monthlyValue.toLocaleString("en-GB")}`} />
-            <InfoBlock label="Client Since" value={new Date(client.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} />
-            {client.contractUrl && (
-              <InfoBlock label="Contract">
-                <a href={client.contractUrl} className="flex items-center gap-1 text-sm text-red-600 hover:underline">
-                  <FileText size={13} /> View Contract
-                </a>
-              </InfoBlock>
-            )}
-          </div>
-        </TabsContent>
-
         {/* Invoices */}
-        <TabsContent value="invoices">
-          <div className="border border-gray-200 overflow-hidden">
+        <TabsContent value="invoices" className="mt-4">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
+                <tr className="border-b border-gray-100 bg-gray-50/70">
                   {["Reference", "Amount", "Due Date", "Status"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[10px] tracking-[0.14em] uppercase text-gray-500 font-bold">
+                    <th key={h} className="px-5 py-3 text-left text-[10px] tracking-[0.14em] uppercase text-gray-400 font-semibold">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {clientInvoices.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">No invoices.</td></tr>
-                )}
-                {clientInvoices.map((inv) => (
-                  <tr key={inv.id} className="border-b border-gray-100">
-                    <td className="px-4 py-3 font-mono text-xs">{inv.reference}</td>
-                    <td className="px-4 py-3 font-mono">£{inv.amount.toLocaleString("en-GB")}</td>
-                    <td className="px-4 py-3 text-gray-600">{new Date(inv.dueDate).toLocaleDateString("en-GB")}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={inv.status} />
+              <tbody className="divide-y divide-gray-50">
+                {clientInvoices.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-12 text-center text-sm text-gray-400">
+                      No invoices yet.
                     </td>
+                  </tr>
+                ) : clientInvoices.map((inv) => (
+                  <tr key={inv.id} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="px-5 py-3.5 font-mono text-xs text-gray-600">{inv.reference}</td>
+                    <td className="px-5 py-3.5 font-mono font-bold text-gray-900">£{inv.amount.toLocaleString("en-GB")}</td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(inv.dueDate).toLocaleDateString("en-GB")}</td>
+                    <td className="px-5 py-3.5"><StatusBadge status={inv.status} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -185,71 +345,35 @@ export default function ClientDetailPage({
         </TabsContent>
 
         {/* Videos */}
-        <TabsContent value="videos">
-          <div className="border border-gray-200 overflow-hidden">
+        <TabsContent value="videos" className="mt-4">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
+                <tr className="border-b border-gray-100 bg-gray-50/70">
                   {["Title", "Platform", "Due Date", "Status"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[10px] tracking-[0.14em] uppercase text-gray-500 font-bold">
+                    <th key={h} className="px-5 py-3 text-left text-[10px] tracking-[0.14em] uppercase text-gray-400 font-semibold">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {clientVideos.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">No videos.</td></tr>
-                )}
-                {clientVideos.map((v) => (
-                  <tr key={v.id} className="border-b border-gray-100">
-                    <td className="px-4 py-3 font-medium">{v.title}</td>
-                    <td className="px-4 py-3 capitalize text-gray-600">{v.platform}</td>
-                    <td className="px-4 py-3 text-gray-600">{new Date(v.dueDate).toLocaleDateString("en-GB")}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={v.status} />
+              <tbody className="divide-y divide-gray-50">
+                {clientVideos.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-12 text-center text-sm text-gray-400">
+                      No videos yet.
                     </td>
+                  </tr>
+                ) : clientVideos.map((v) => (
+                  <tr key={v.id} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-gray-900">{v.title}</td>
+                    <td className="px-5 py-3.5 capitalize text-gray-500 text-xs">{v.platform}</td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(v.dueDate).toLocaleDateString("en-GB")}</td>
+                    <td className="px-5 py-3.5"><StatusBadge status={v.status} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </TabsContent>
-
-        {/* Onboarding */}
-        <TabsContent value="onboarding">
-          <div className="border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-bold text-gray-900">
-                Onboarding Progress
-              </p>
-              <span className="text-sm font-black text-black">
-                {client.onboardingProgress}%
-              </span>
-            </div>
-            <div className="h-1.5 bg-gray-100 mb-5">
-              <div
-                className="h-full bg-red-600 transition-all"
-                style={{ width: `${client.onboardingProgress}%` }}
-              />
-            </div>
-            <div className="space-y-3">
-              {ONBOARDING_STEPS.map((step) => {
-                const done = onboarding?.[step.key] ?? false;
-                return (
-                  <div key={step.key} className="flex items-center gap-3">
-                    {done ? (
-                      <CheckCircle2 size={16} className="text-green-600 shrink-0" />
-                    ) : (
-                      <Circle size={16} className="text-gray-300 shrink-0" />
-                    )}
-                    <span className={cn("text-sm", done ? "text-gray-900" : "text-gray-400")}>
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         </TabsContent>
       </Tabs>
@@ -257,34 +381,40 @@ export default function ClientDetailPage({
   );
 }
 
-function InfoBlock({
+function DetailRow({
+  icon,
   label,
   value,
-  children,
 }: {
+  icon: React.ReactNode;
   label: string;
-  value?: string;
-  children?: React.ReactNode;
+  value: string;
 }) {
   return (
-    <div className="border border-gray-200 p-4">
-      <p className="text-[10px] tracking-[0.16em] uppercase text-gray-400 mb-1">{label}</p>
-      {children ?? <p className="text-sm font-medium text-gray-900">{value}</p>}
+    <div className="px-5 py-3.5 flex items-center gap-3">
+      <span className="text-gray-300 shrink-0">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[10px] tracking-[0.12em] uppercase font-semibold text-gray-400 mb-0.5">{label}</p>
+        <p className="text-sm font-medium text-gray-800 truncate">{value}</p>
+      </div>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    paid: "bg-green-100 text-green-800",
-    unpaid: "bg-yellow-100 text-yellow-800",
-    overdue: "bg-red-100 text-red-800",
-    approved: "bg-green-100 text-green-800",
-    pending: "bg-yellow-100 text-yellow-800",
-    edit_requested: "bg-red-100 text-red-800",
+    paid:          "bg-green-100 text-green-700 border border-green-200",
+    unpaid:        "bg-yellow-100 text-yellow-700 border border-yellow-200",
+    overdue:       "bg-red-100 text-red-700 border border-red-200",
+    approved:      "bg-green-100 text-green-700 border border-green-200",
+    pending:       "bg-yellow-100 text-yellow-700 border border-yellow-200",
+    edit_requested:"bg-orange-100 text-orange-700 border border-orange-200",
   };
   return (
-    <span className={cn("inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", styles[status] ?? "bg-gray-100 text-gray-800")}>
+    <span className={cn(
+      "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
+      styles[status] ?? "bg-gray-100 text-gray-600"
+    )}>
       {status.replace("_", " ")}
     </span>
   );

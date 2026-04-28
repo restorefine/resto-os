@@ -27,7 +27,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []Video{}
 	}
-	response.Ok(w, list, "")
+	response.Ok(w, map[string]any{"videos": list}, "")
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +47,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error(), "VALIDATION_ERROR")
 		return
 	}
-	response.Created(w, v, "video created")
+	response.Created(w, map[string]any{"video": v}, "video created")
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +62,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		response.InternalError(w, "failed to update video")
 		return
 	}
-	response.Ok(w, v, "video updated")
+	response.Ok(w, map[string]any{"video": v}, "video updated")
 }
 
 func (h *Handler) Approve(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +77,7 @@ func (h *Handler) Approve(w http.ResponseWriter, r *http.Request) {
 		response.InternalError(w, "failed to approve video")
 		return
 	}
-	response.Ok(w, v, "video approved")
+	response.Ok(w, map[string]any{"video": v}, "video approved")
 }
 
 type requestEditBody struct {
@@ -93,7 +93,7 @@ func (h *Handler) RequestEdit(w http.ResponseWriter, r *http.Request) {
 		response.InternalError(w, "failed to request edit")
 		return
 	}
-	response.Ok(w, v, "edit requested")
+	response.Ok(w, map[string]any{"video": v}, "edit requested")
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +115,7 @@ func (h *Handler) ListComments(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []Comment{}
 	}
-	response.Ok(w, list, "")
+	response.Ok(w, map[string]any{"videos": list}, "")
 }
 
 func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request) {
@@ -137,5 +137,5 @@ func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error(), "VALIDATION_ERROR")
 		return
 	}
-	response.Created(w, comment, "comment added")
+	response.Created(w, map[string]any{"comment": comment}, "comment added")
 }
