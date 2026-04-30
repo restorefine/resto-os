@@ -139,7 +139,7 @@ export function Sidebar() {
   return (
     <aside
       style={{ width: sidebarOpen ? "260px" : "64px" }}
-      className="flex flex-col h-screen bg-[#0A0A0A] border-r border-white/6 overflow-hidden transition-[width] duration-250 ease-in-out shrink-0"
+      className="hidden md:flex flex-col h-screen bg-[#0A0A0A] border-r border-white/6 overflow-hidden transition-[width] duration-250 ease-in-out shrink-0"
     >
       {/* Logo */}
       <div className="flex items-center justify-center h-16 px-4 border-b border-white/6 shrink-0">

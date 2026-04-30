@@ -178,6 +178,10 @@ func main() {
 	r.Post("/api/auth/refresh", authHandler.Refresh)
 	r.Post("/api/auth/logout", authHandler.Logout)
 
+	// Contract signing — public (no auth)
+	r.Get("/api/contracts/public/{token}", contractsHandler.GetPublicContract)
+	r.Post("/api/contracts/public/{token}/sign", contractsHandler.SignContract)
+
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(authSvc))
@@ -263,6 +267,11 @@ func main() {
 		r.Route("/api/contracts", func(r chi.Router) {
 			r.Get("/", contractsHandler.List)
 			r.Post("/", contractsHandler.Create)
+			// Static sub-paths must be registered before /{id} wildcard
+			r.Post("/share", contractsHandler.ShareContract)
+			r.Get("/links", contractsHandler.ListLinks)
+			r.Delete("/links/{id}", contractsHandler.DeleteLink)
+			// Wildcard last
 			r.Delete("/{id}", contractsHandler.Delete)
 		})
 

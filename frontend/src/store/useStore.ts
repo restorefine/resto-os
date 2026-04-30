@@ -4,10 +4,13 @@ import { User, AppNotification } from "@/lib/types";
 interface AppState {
   currentUser: User | null;
   sidebarOpen: boolean;
+  mobileMenuOpen: boolean;
   notifications: AppNotification[];
   setCurrentUser: (user: User | null) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  toggleMobileMenu: () => void;
+  setMobileMenuOpen: (open: boolean) => void;
   addNotification: (notification: Omit<AppNotification, "id" | "createdAt" | "read">) => void;
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
@@ -16,6 +19,7 @@ interface AppState {
 export const useStore = create<AppState>((set) => ({
   currentUser: null,
   sidebarOpen: true,
+  mobileMenuOpen: false,
   notifications: [],
 
   setCurrentUser: (user) => set({ currentUser: user }),
@@ -24,6 +28,11 @@ export const useStore = create<AppState>((set) => ({
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+
+  toggleMobileMenu: () =>
+    set((state) => ({ mobileMenuOpen: !state.mobileMenuOpen })),
+
+  setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
 
   addNotification: (notification) =>
     set((state) => ({

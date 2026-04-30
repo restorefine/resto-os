@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Bell, Search } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import Link from "next/link";
 
@@ -32,7 +32,7 @@ function getBreadcrumb(pathname: string): { label: string; parent?: { label: str
 
 export function Topbar() {
   const pathname = usePathname();
-  const { currentUser, notifications } = useStore();
+  const { currentUser, notifications, toggleMobileMenu } = useStore();
   const unread = notifications.filter((n) => !n.read).length;
   const crumb = getBreadcrumb(pathname);
 
@@ -44,6 +44,12 @@ export function Topbar() {
     <header className="h-14 border-b border-gray-100 bg-white flex items-center justify-between px-6 shrink-0 z-10">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
+        <button
+          onClick={toggleMobileMenu}
+          className="md:hidden p-2 -ml-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <Menu size={18} />
+        </button>
         {crumb.parent && (
           <>
             <Link href={crumb.parent.href} className="text-gray-400 hover:text-gray-700 transition-colors">

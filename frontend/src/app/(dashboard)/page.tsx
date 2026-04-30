@@ -77,7 +77,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           label="Monthly Recurring Revenue"
           value={fmt(stats.mrr)}
@@ -117,10 +117,10 @@ export default function DashboardPage() {
       </div>
 
       {/* Main content row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* MRR Chart */}
-        <div className="xl:col-span-2 bg-white border border-gray-200 rounded-xl p-6">
+        <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6">
           <div className="flex items-start justify-between mb-6">
             <div>
               <p className="text-xs font-semibold tracking-widest uppercase text-gray-400">
@@ -221,7 +221,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom row */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Overdue / Unpaid invoices */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
