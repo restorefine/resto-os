@@ -10,7 +10,7 @@ import { Client } from "@/lib/types";
 import { contractSchema, ContractFormData, ContractLinkRecord } from "@/lib/contract";
 import { ContractDocument } from "@/components/ContractDocument";
 import { cn } from "@/lib/utils";
-import { Download, Share2, Copy, Check, Trash2, ExternalLink } from "lucide-react";
+import { Download, Share2, Copy, Check, Trash2, ExternalLink, FileDown } from "lucide-react";
 import { toast } from "sonner";
 
 const inp = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-900 bg-white";
@@ -106,6 +106,34 @@ export default function ContractsPage() {
 
   const [shareModal, setShareModal] = useState<{ open: boolean; url: string }>({ open: false, url: "" });
   const [mobileTab, setMobileTab] = useState<"form" | "preview">("form");
+  const [downloadLink, setDownloadLink] = useState<(typeof links)[0] | null>(null);
+
+  useEffect(() => {
+    if (!downloadLink) return;
+    const content = document.getElementById("link-contract-print");
+    if (!content) return;
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+    win.document.write(`
+      <!DOCTYPE html><html>
+        <head>
+          <title>Contract – ${downloadLink.clientName}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            body { font-family: Arial, sans-serif; background: white; }
+            @page { margin: 0; size: A4; }
+            #link-contract-print { padding: 0 !important; width: 100% !important; }
+            .preview-page-break { display: none !important; }
+          </style>
+        </head>
+        <body>${content.outerHTML}</body>
+      </html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 400);
+    setDownloadLink(null);
+  }, [downloadLink]);
 
   const { register, watch, setValue, formState: { errors } } = useForm<ContractFormData>({
     resolver: zodResolver(contractSchema),
@@ -413,6 +441,13 @@ export default function ContractsPage() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2 justify-end">
                         <button
+                          onClick={() => setDownloadLink(link)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
+                          title="Download PDF"
+                        >
+                          <FileDown size={13} />
+                        </button>
+                        <button
                           onClick={() => handleCopyLink(link.token)}
                           className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
                           title="Copy link"
@@ -433,6 +468,13 @@ export default function ContractsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Hidden contract renderer for link downloads */}
+      {downloadLink && (
+        <div style={{ position: "absolute", left: "-9999px", top: 0, width: 794, pointerEvents: "none" }}>
+          <ContractDocument data={downloadLink.contractData} printId="link-contract-print" />
         </div>
       )}
 

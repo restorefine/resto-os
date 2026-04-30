@@ -43,11 +43,12 @@ interface ContractDocumentProps {
   data: ContractFormData;
   signatures?: ContractSignatures;
   onClientSignatureClick?: () => void;
+  printId?: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ContractDocument({ data, signatures, onClientSignatureClick }: ContractDocumentProps) {
+export function ContractDocument({ data, signatures, onClientSignatureClick, printId = "contract-print" }: ContractDocumentProps) {
   const startDate = new Date(data.startDate);
   const endDate = addWeeks(data.startDate, 12);
   const sprintLabel = `${fmtShort(startDate)} – ${fmtShort(endDate)}`;
@@ -56,7 +57,7 @@ export function ContractDocument({ data, signatures, onClientSignatureClick }: C
 
   return (
     <div
-      id="contract-print"
+      id={printId}
       className="bg-white text-[#111] font-[Arial,sans-serif] text-[12px] leading-[1.55]"
       style={{ width: "210mm" }}
     >
