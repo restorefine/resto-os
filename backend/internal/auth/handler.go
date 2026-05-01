@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -255,23 +256,37 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func setCookie(w http.ResponseWriter, name, value string, maxAge time.Duration) {
+	isProd := os.Getenv("APP_ENV") == "production"
+	sameSite := http.SameSiteLaxMode
+	if isProd {
+		sameSite = http.SameSiteNoneMode
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
 		Value:    value,
 		Path:     "/",
 		MaxAge:   int(maxAge.Seconds()),
 		HttpOnly: true,
-		Secure:   false, // set to true in production
-		SameSite: http.SameSiteLaxMode,
+		Secure:   isProd,
+		SameSite: sameSite,
 	})
 }
 
 func clearCookie(w http.ResponseWriter, name string) {
+	isProd := os.Getenv("APP_ENV") == "production"
+	sameSite := http.SameSiteLaxMode
+	if isProd {
+		sameSite = http.SameSiteNoneMode
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   isProd,
+		SameSite: sameSite,
 	})
 }
