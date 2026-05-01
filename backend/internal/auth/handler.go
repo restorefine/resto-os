@@ -266,10 +266,11 @@ func setCookie(w http.ResponseWriter, name, value string, maxAge time.Duration) 
 		Name:     name,
 		Value:    value,
 		Path:     "/",
-		MaxAge:   int(maxAge.Seconds()),
-		HttpOnly: true,
-		Secure:   isProd,
-		SameSite: sameSite,
+		MaxAge:      int(maxAge.Seconds()),
+		HttpOnly:    true,
+		Secure:      isProd,
+		SameSite:    sameSite,
+		Partitioned: isProd,
 	})
 }
 
@@ -284,9 +285,10 @@ func clearCookie(w http.ResponseWriter, name string) {
 		Name:     name,
 		Value:    "",
 		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   isProd,
-		SameSite: sameSite,
+		MaxAge:      -1,
+		HttpOnly:    true,
+		Secure:      isProd,
+		SameSite:    sameSite,
+		Partitioned: isProd,
 	})
 }
