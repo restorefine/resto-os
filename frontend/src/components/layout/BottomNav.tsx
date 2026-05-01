@@ -31,7 +31,6 @@ const ROLE_BOTTOM_NAV: Record<UserRole, NavItem[]> = {
   video_editor: [
     { label: "Home", href: "/", icon: LayoutDashboard },
     { label: "Videos", href: "/videos", icon: Film },
-    { label: "Calendar", href: "/calendar", icon: Calendar },
   ],
   developer_designer: [
     { label: "Home", href: "/", icon: LayoutDashboard },
@@ -40,8 +39,7 @@ const ROLE_BOTTOM_NAV: Record<UserRole, NavItem[]> = {
   ],
   project_manager: [
     { label: "Home", href: "/", icon: LayoutDashboard },
-    { label: "Clients", href: "/clients", icon: Users },
-    { label: "Pipeline", href: "/pipeline", icon: Columns2 },
+    { label: "Videos", href: "/videos", icon: Film },
     { label: "Calendar", href: "/calendar", icon: Calendar },
   ],
 };

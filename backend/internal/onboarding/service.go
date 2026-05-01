@@ -10,6 +10,10 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
+func (s *Service) GetAll(ctx context.Context) ([]Step, error) {
+	return s.repo.GetAll(ctx)
+}
+
 func (s *Service) GetByClient(ctx context.Context, clientID string) ([]Step, error) {
 	return s.repo.GetByClient(ctx, clientID)
 }

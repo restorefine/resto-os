@@ -150,7 +150,7 @@ export default function ClientDetailPage({
               onClick={handleActivate}
               disabled={progress < 100 || activatePortal.isPending}
               title={progress < 100 ? "Complete all onboarding steps first" : undefined}
-              className="shrink-0 flex items-center gap-1.5 bg-gray-900 hover:bg-black text-white text-[10px] tracking-[0.18em] uppercase font-bold px-3 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="shrink-0 flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-[10px] tracking-[0.18em] uppercase font-bold px-3 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               Activate Portal
             </button>
@@ -232,7 +232,7 @@ export default function ClientDetailPage({
                     className={cn(
                       "w-full flex items-center gap-4 px-5 py-4 text-left transition-colors group",
                       !step || isLoading ? "cursor-default" : "cursor-pointer",
-                      done ? "hover:bg-green-50/50" : step ? "hover:bg-gray-50" : ""
+                      done ? "bg-green-50/60 hover:bg-green-50" : step ? "hover:bg-gray-50" : ""
                     )}
                   >
                     {/* Step number */}
@@ -260,13 +260,13 @@ export default function ClientDetailPage({
                         <>
                           <p className={cn(
                             "text-sm font-semibold leading-tight",
-                            done ? "text-gray-600 line-through decoration-gray-300"
+                            done ? "text-green-700 line-through decoration-green-300"
                               : isStub ? "text-gray-300"
                               : "text-gray-800"
                           )}>
                             {meta.label}
                           </p>
-                          <p className={cn("text-[11px] mt-0.5 leading-snug", isStub ? "text-gray-200" : "text-gray-400")}>
+                          <p className={cn("text-[11px] mt-0.5 leading-snug", done ? "text-green-500" : isStub ? "text-gray-200" : "text-gray-400")}>
                             {meta.desc}
                           </p>
                         </>

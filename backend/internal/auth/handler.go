@@ -68,7 +68,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		clientID = *u.ClientID
 	}
 
-	accessToken, err := h.svc.GenerateAccessToken(u.ID, u.Email, u.Role, clientID)
+	accessToken, err := h.svc.GenerateAccessToken(u.ID, u.Email, u.Role, clientID, u.Name)
 	if err != nil {
 		response.InternalError(w, "token generation failed")
 		return
@@ -121,9 +121,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	var u userRecord
 	err = h.db.QueryRow(ctx,
-		`SELECT id, email, role, client_id FROM users WHERE id = $1`,
+		`SELECT id, name, email, role, client_id FROM users WHERE id = $1`,
 		userID,
-	).Scan(&u.ID, &u.Email, &u.Role, &u.ClientID)
+	).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.ClientID)
 	if err != nil {
 		response.Unauthorized(w, "user not found")
 		return
@@ -134,7 +134,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		clientID = *u.ClientID
 	}
 
-	accessToken, err := h.svc.GenerateAccessToken(u.ID, u.Email, u.Role, clientID)
+	accessToken, err := h.svc.GenerateAccessToken(u.ID, u.Email, u.Role, clientID, u.Name)
 	if err != nil {
 		response.InternalError(w, "token generation failed")
 		return

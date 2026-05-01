@@ -19,11 +19,14 @@ import {
   Video,
   ArrowRight,
   Clock,
+  Film,
 } from "lucide-react";
 import { MOCK_DASHBOARD } from "@/lib/mock-data";
 import { useInvoices } from "@/hooks/useInvoices";
 import { usePipeline } from "@/hooks/usePipeline";
 import { useVideos } from "@/hooks/useVideos";
+import { useClients } from "@/hooks/useClients";
+import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -48,13 +51,224 @@ const ACTIVITY_COLOR: Record<string, string> = {
   quote_sent: "bg-orange-500",
 };
 
+function getDueLabelDash(dueDate: string): { label: string; color: string } {
+  if (!dueDate) return { label: "", color: "text-gray-400" };
+  const d = new Date(dueDate); d.setHours(0, 0, 0, 0);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - now.getTime()) / 86400000);
+  if (diff < 0)  return { label: `${Math.abs(diff)}d overdue`, color: "text-red-600" };
+  if (diff === 0) return { label: "Due today",    color: "text-orange-500" };
+  if (diff === 1) return { label: "Due tomorrow", color: "text-orange-400" };
+  return { label: `Due in ${diff}d`, color: "text-gray-500" };
+}
+
+const PLATFORM_BADGE: Record<string, string> = {
+  instagram: "bg-pink-100 text-pink-700",
+  tiktok: "bg-gray-900 text-white",
+  youtube: "bg-red-100 text-red-700",
+  facebook: "bg-blue-100 text-blue-700",
+  linkedin: "bg-blue-50 text-blue-600",
+};
+
+const STAGE_CONFIG: { key: string; label: string; color: string }[] = [
+  { key: "scripting",   label: "Pre-Production", color: "bg-gray-900" },
+  { key: "filming",     label: "Production",     color: "bg-gray-900" },
+  { key: "editing",     label: "Post-Production", color: "bg-red-600" },
+  { key: "review",      label: "Client Review",  color: "bg-orange-500" },
+  { key: "approved",    label: "Approved",       color: "bg-green-500" },
+];
+
+function VideoDashboard({ role }: { role: string }) {
+  const { data: videos = [] } = useVideos();
+  const { data: clients = [] } = useClients();
+
+  const total = videos.length;
+  const approved = videos.filter(
+    (v) => v.status === "approved" || v.productionStage === "approved"
+  ).length;
+  const inReview = videos.filter((v) => v.productionStage === "review").length;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const overdue = videos.filter((v) => {
+    if (!v.dueDate || v.status === "approved") return false;
+    const d = new Date(v.dueDate); d.setHours(0, 0, 0, 0);
+    return d < now;
+  }).length;
+
+  const activeClients = clients
+    .filter((c) => c.status === "active")
+    .sort((a, b) => b.monthlyProgress - a.monthlyProgress);
+
+  const upcoming = videos
+    .filter((v) => v.dueDate && v.status !== "approved")
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+    .slice(0, 6);
+
+  const subtitle =
+    role === "project_manager"
+      ? "Your production overview for today."
+      : "Here's what's in your queue today.";
+
+  return (
+    <div className="space-y-6 max-w-[1200px]">
+      <div>
+        <h1 className="text-2xl font-black tracking-tight text-gray-900">
+          Good morning<span className="text-red-600">.</span>
+        </h1>
+        <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Videos"
+          value={String(total)}
+          trend={`${total} total`}
+          trendUp={total > 0}
+          sub="in production"
+          icon={<Film size={16} />}
+          accent="gray"
+        />
+        <StatCard
+          label="Approved"
+          value={String(approved)}
+          trend={total > 0 ? `${Math.round((approved / total) * 100)}%` : "0%"}
+          trendUp
+          sub="of total"
+          icon={<Video size={16} />}
+          accent="green"
+        />
+        <StatCard
+          label="In Review"
+          value={String(inReview)}
+          trend={`${inReview} pending`}
+          trendUp={inReview === 0}
+          sub="awaiting feedback"
+          icon={<Clock size={16} />}
+          accent="yellow"
+        />
+        <StatCard
+          label="Overdue"
+          value={String(overdue)}
+          trend={overdue === 0 ? "All on track" : `${overdue} past due`}
+          trendUp={overdue === 0}
+          sub={overdue === 0 ? "" : "need attention"}
+          icon={<ReceiptText size={16} />}
+          accent={overdue > 0 ? "red" : "gray"}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6">
+          <p className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-4">
+            Production Pipeline
+          </p>
+          <div className="space-y-3">
+            {STAGE_CONFIG.map((stage) => {
+              const count = videos.filter((v) => v.productionStage === stage.key).length;
+              const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+              return (
+                <div key={stage.key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-gray-700">{stage.label}</span>
+                    <span className="text-xs font-semibold text-gray-500">{count}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={cn("h-full rounded-full transition-all", stage.color)}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <p className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-4">
+            Client Progress
+          </p>
+          {activeClients.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No active clients.</p>
+          ) : (
+            <div className="space-y-4">
+              {activeClients.slice(0, 5).map((c) => (
+                <div key={c.id}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-gray-800 truncate max-w-[140px]">
+                      {c.name}
+                    </span>
+                    <span className="text-xs font-semibold text-gray-500 shrink-0">
+                      {c.monthlyProgress}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-red-500 transition-all"
+                      style={{ width: `${Math.min(c.monthlyProgress, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs font-semibold tracking-widest uppercase text-gray-400">
+            Upcoming Deadlines
+          </p>
+          <Link
+            href="/videos"
+            className="text-xs text-red-600 hover:text-red-800 font-semibold flex items-center gap-1 transition-colors"
+          >
+            View all <ArrowRight size={11} />
+          </Link>
+        </div>
+        {upcoming.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No upcoming deadlines.</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {upcoming.map((v) => {
+              const due = getDueLabelDash(v.dueDate);
+              return (
+                <div key={v.id} className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{v.title}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{v.clientName}</p>
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0",
+                    PLATFORM_BADGE[v.platform] ?? "bg-gray-100 text-gray-600"
+                  )}>
+                    {v.platform}
+                  </span>
+                  <span className={cn("text-xs font-semibold shrink-0", due.color)}>
+                    {due.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [chartMounted, setChartMounted] = useState(false);
   useEffect(() => setChartMounted(true), []);
 
+  const { currentUser } = useStore();
   const { data: invoices = [] } = useInvoices();
   const { data: leads = [] } = usePipeline();
   const { data: videos = [] } = useVideos();
+
+  const isVideoRole =
+    currentUser?.role === "project_manager" || currentUser?.role === "video_editor";
+  if (isVideoRole) return <VideoDashboard role={currentUser.role} />;
 
   const unpaid = invoices.filter((i) => i.status !== "paid");
   const unpaidTotal = unpaid.reduce((s, i) => s + i.amount, 0);
@@ -66,7 +280,6 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-[1400px]">
 
-      {/* Greeting */}
       <div>
         <h1 className="text-2xl font-black tracking-tight text-gray-900">
           Good morning<span className="text-red-600">.</span>
@@ -76,7 +289,6 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           label="Monthly Recurring Revenue"
@@ -116,10 +328,8 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Main content row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* MRR Chart */}
         <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6">
           <div className="flex items-start justify-between mb-6">
             <div>
@@ -187,7 +397,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Activity Feed */}
         <div className="bg-white border border-gray-200 rounded-xl p-6 overflow-hidden">
           <div className="flex items-center justify-between mb-5">
             <p className="text-xs font-semibold tracking-widest uppercase text-gray-400">
@@ -220,10 +429,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Bottom row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        {/* Overdue / Unpaid invoices */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-semibold tracking-widest uppercase text-gray-400">
@@ -260,7 +467,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Pending videos */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-semibold tracking-widest uppercase text-gray-400">
@@ -302,8 +508,7 @@ export default function DashboardPage() {
   );
 }
 
-/* ── Stat card ─────────────────────────────────────── */
-type Accent = "red" | "blue" | "orange" | "yellow" | "gray";
+type Accent = "red" | "blue" | "orange" | "yellow" | "gray" | "green";
 
 const ACCENT_ICON: Record<Accent, string> = {
   red: "bg-red-50 text-red-600",
@@ -311,6 +516,7 @@ const ACCENT_ICON: Record<Accent, string> = {
   orange: "bg-orange-50 text-orange-600",
   yellow: "bg-yellow-50 text-yellow-600",
   gray: "bg-gray-100 text-gray-500",
+  green: "bg-green-50 text-green-600",
 };
 
 function StatCard({

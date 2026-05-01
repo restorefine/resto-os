@@ -30,6 +30,7 @@ export interface Client {
   contractUrl?: string;
   portalActive: boolean;
   onboardingProgress: number;
+  currentStepLabel?: string | null;
   monthlyProgress: number;
   createdAt: string;
 }

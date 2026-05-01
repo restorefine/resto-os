@@ -27,6 +27,7 @@ import (
 	"github.com/restorefine/agencyos/internal/portal"
 	"github.com/restorefine/agencyos/internal/quotes"
 	"github.com/restorefine/agencyos/internal/users"
+	"github.com/restorefine/agencyos/internal/videochat"
 	"github.com/restorefine/agencyos/internal/videos"
 	appdb "github.com/restorefine/agencyos/pkg/db"
 	"github.com/restorefine/agencyos/pkg/mailer"
@@ -112,6 +113,10 @@ func main() {
 	videosRepo := videos.NewRepository(pool)
 	videosSvc := videos.NewService(videosRepo)
 	videosHandler := videos.NewHandler(videosSvc)
+
+	// Video Chat
+	vchatRepo := videochat.NewRepository(pool)
+	vchatHandler := videochat.NewHandler(vchatRepo, hub, pool)
 
 	// Onboarding
 	onboardingRepo := onboarding.NewRepository(pool)
@@ -248,10 +253,15 @@ func main() {
 			r.Delete("/{id}", videosHandler.Delete)
 			r.Get("/{id}/comments", videosHandler.ListComments)
 			r.Post("/{id}/comments", videosHandler.AddComment)
+			// Chat — registered inside the same Route block so chi matches correctly
+			r.Get("/{id}/chat", vchatHandler.List)
+			r.Post("/{id}/chat", vchatHandler.Send)
+			r.Post("/{id}/chat/typing", vchatHandler.Typing)
 		})
 
 		// Onboarding
 		r.Route("/api/onboarding", func(r chi.Router) {
+			r.Get("/all", onboardingHandler.GetAll)
 			r.Get("/{clientId}", onboardingHandler.GetByClient)
 			r.Patch("/{clientId}/step/{stepId}", onboardingHandler.ToggleStep)
 		})

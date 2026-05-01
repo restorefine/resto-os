@@ -12,6 +12,7 @@ export const contractSchema = z.object({
   totalInvestment: z.number().min(1),
   payment1:        z.number().min(1),
   payment2:        z.number().min(1),
+  serviceProvider: z.enum(["Harpreet Singh", "Rohit Acharya"]).default("Harpreet Singh"),
 });
 
 export type ContractFormData = z.infer<typeof contractSchema>;

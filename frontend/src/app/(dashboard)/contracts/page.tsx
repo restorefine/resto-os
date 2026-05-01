@@ -143,6 +143,7 @@ export default function ContractsPage() {
       totalInvestment: 1600,
       payment1: 1000,
       payment2: 600,
+      serviceProvider: "Harpreet Singh",
     },
   });
 
@@ -311,6 +312,29 @@ export default function ContractsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
                 <input {...register("startDate")} type="date" className={inp} />
                 {errors.startDate && <p className="mt-1 text-xs text-red-500">{errors.startDate.message}</p>}
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
+
+            <div className="space-y-3">
+              <p className="text-[10px] tracking-[0.14em] uppercase font-semibold text-gray-400">Service Provider</p>
+              <div className="flex gap-2">
+                {(["Harpreet Singh", "Rohit Acharya"] as const).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setValue("serviceProvider", name)}
+                    className={cn(
+                      "flex-1 py-2 text-xs font-bold rounded-lg border transition-colors cursor-pointer",
+                      formValues.serviceProvider === name
+                        ? "bg-gray-900 text-white border-gray-900"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                    )}
+                  >
+                    {name}
+                  </button>
+                ))}
               </div>
             </div>
 

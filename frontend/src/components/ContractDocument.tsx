@@ -321,7 +321,7 @@ export function ContractDocument({ data, signatures, onClientSignatureClick, pri
             {/* Service Provider signature box */}
             <div style={{ padding: "14px 16px" }}>
               <div style={{ fontSize: "10px", fontWeight: "700", color: "#d01414", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "4px" }}>Service Provider</div>
-              <div style={{ fontWeight: "900", fontSize: "13px" }}>Harpreet Singh</div>
+              <div style={{ fontWeight: "900", fontSize: "13px" }}>{data.serviceProvider ?? "Harpreet Singh"}</div>
               <div style={{ fontSize: "11px", color: "#555" }}>RestoRefine Studios Ltd</div>
               <div style={{ marginTop: "40px", borderTop: "1px solid #aaa", paddingTop: "4px", fontSize: "10px", color: "#888" }}>Signature</div>
               <div style={{ marginTop: "28px", borderTop: "1px solid #aaa", paddingTop: "4px", fontSize: "10px", color: "#888" }}>Date</div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Client } from "@/lib/types";
 import api from "@/lib/api";
 
 export interface OnboardingStep {
@@ -44,6 +45,13 @@ export const DEFAULT_STEP_KEYS = [
   "kick_off_call",
 ] as const;
 
+async function fetchAllSteps(): Promise<OnboardingStep[]> {
+  const res = await api.get("/api/onboarding/all");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = res.data as any;
+  return d?.data ?? d ?? [];
+}
+
 async function fetchSteps(clientId: string): Promise<OnboardingStep[]> {
   const res = await api.get(`/api/onboarding/${clientId}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,6 +72,38 @@ async function toggleStep(
   return d?.data ?? d;
 }
 
+export interface OnboardingClientData {
+  progress: number;
+  currentStepLabel: string | null;
+}
+
+export function useAllOnboardingProgress(): Record<string, OnboardingClientData> {
+  const qc = useQueryClient();
+  const { data: allSteps = [] } = useQuery({
+    queryKey: ["onboarding-all"],
+    queryFn: fetchAllSteps,
+    staleTime: 30_000,
+  });
+
+  const result: Record<string, OnboardingClientData> = {};
+  const byClient: Record<string, OnboardingStep[]> = {};
+  for (const step of allSteps) {
+    (byClient[step.client_id] ??= []).push(step);
+  }
+  for (const [clientId, steps] of Object.entries(byClient)) {
+    const live = qc.getQueryData<OnboardingStep[]>(["onboarding", clientId]) ?? steps;
+    const progress = computeProgress(live);
+    const firstIncomplete = DEFAULT_STEP_KEYS.find(
+      (key) => !live.find((s) => s.step === key)?.completed
+    );
+    result[clientId] = {
+      progress,
+      currentStepLabel: firstIncomplete ? (STEP_META[firstIncomplete]?.label ?? null) : null,
+    };
+  }
+  return result;
+}
+
 export function useOnboardingSteps(clientId: string) {
   return useQuery({
     queryKey: ["onboarding", clientId],
@@ -77,8 +117,29 @@ export function useToggleOnboardingStep(clientId: string) {
   return useMutation({
     mutationFn: ({ stepId, completed }: { stepId: string; completed: boolean }) =>
       toggleStep(clientId, stepId, completed),
+    onMutate: async ({ stepId, completed }) => {
+      await qc.cancelQueries({ queryKey: ["onboarding", clientId] });
+      const prev = qc.getQueryData<OnboardingStep[]>(["onboarding", clientId]);
+      if (prev) {
+        const updated = prev.map((s) =>
+          s.id === stepId
+            ? { ...s, completed, completed_at: completed ? new Date().toISOString() : null }
+            : s
+        );
+        qc.setQueryData(["onboarding", clientId], updated);
+        const newProgress = computeProgress(updated);
+        qc.setQueryData<Client[]>(["clients"], (old) =>
+          old?.map((c) => c.id === clientId ? { ...c, onboardingProgress: newProgress } : c) ?? old
+        );
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["onboarding", clientId], ctx.prev);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["onboarding", clientId] });
+      qc.invalidateQueries({ queryKey: ["onboarding-all"] });
       qc.invalidateQueries({ queryKey: ["clients"] });
     },
   });

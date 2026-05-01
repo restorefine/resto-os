@@ -53,7 +53,6 @@ const ROLE_NAV: Record<UserRole, { main: NavItem[]; tools: NavItem[] }> = {
     main: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard },
       { label: "Videos", href: "/videos", icon: Film },
-      { label: "Calendar", href: "/calendar", icon: Calendar },
     ],
     tools: [],
   },
@@ -68,12 +67,10 @@ const ROLE_NAV: Record<UserRole, { main: NavItem[]; tools: NavItem[] }> = {
   project_manager: {
     main: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard },
-      { label: "Clients", href: "/clients", icon: Users },
-      { label: "Pipeline", href: "/pipeline", icon: Columns2 },
+      { label: "Videos", href: "/videos", icon: Film },
       { label: "Calendar", href: "/calendar", icon: Calendar },
-      { label: "Invoices", href: "/invoices", icon: Receipt },
     ],
-    tools: [{ label: "Contracts", href: "/contracts", icon: FileCheck2 }],
+    tools: [],
   },
 };
 

@@ -29,6 +29,25 @@ async function fetchVideos(): Promise<Video[]> {
   return (data.data.videos ?? []).map(mapVideo);
 }
 
+async function createVideo(req: {
+  clientId: string;
+  clientName: string;
+  title: string;
+  platform: string;
+  dueDate?: string;
+}): Promise<Video> {
+  const { data } = await api.post<W<{ video: unknown }>>("/api/videos", {
+    client_id: req.clientId,
+    title: req.title,
+    platform: req.platform,
+    video_url: "",
+    due_date: req.dueDate || undefined,
+  });
+  const v = mapVideo(data.data.video);
+  // backend doesn't return client_name; patch it in
+  return { ...v, clientName: req.clientName };
+}
+
 async function approveVideo(id: string): Promise<Video> {
   const { data } = await api.post<W<{ video: unknown }>>(`/api/videos/${id}/approve`);
   return mapVideo(data.data.video);
@@ -91,7 +110,12 @@ export function useUpdateVideoStage() {
     }: {
       id: string;
       stage: VideoProductionStage;
-    }) => ({ id, stage }),
+    }) => {
+      const { data } = await api.patch<W<{ video: unknown }>>(`/api/videos/${id}`, {
+        production_stage: stage,
+      });
+      return mapVideo(data.data.video);
+    },
     onMutate: async ({ id, stage }) => {
       await qc.cancelQueries({ queryKey: ["videos"] });
       const prev = qc.getQueryData<Video[]>(["videos"]);
@@ -123,6 +147,43 @@ export function useApproveVideo() {
     },
     onError: (_, __, ctx) => {
       if (ctx?.prev) qc.setQueryData(["videos"], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["videos"] }),
+  });
+}
+
+export function useUploadVideoLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, videoUrl }: { id: string; videoUrl: string }) => {
+      const { data } = await api.patch<W<{ video: unknown }>>(`/api/videos/${id}`, {
+        video_url: videoUrl,
+      });
+      return mapVideo(data.data.video);
+    },
+    onMutate: async ({ id, videoUrl }) => {
+      await qc.cancelQueries({ queryKey: ["videos"] });
+      const prev = qc.getQueryData<Video[]>(["videos"]);
+      qc.setQueryData<Video[]>(["videos"], (old) =>
+        old?.map((v) => (v.id === id ? { ...v, videoUrl } : v))
+      );
+      return { prev };
+    },
+    onError: (_, __, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["videos"], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["videos"] }),
+  });
+}
+
+export function useCreateVideo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createVideo,
+    onSuccess: (newVideo) => {
+      qc.setQueryData<Video[]>(["videos"], (old) =>
+        old ? [newVideo, ...old] : [newVideo]
+      );
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["videos"] }),
   });

@@ -59,6 +59,29 @@ func (r *Repository) ToggleStep(ctx context.Context, stepID string, completed bo
 }
 
 // EnsureDefaultSteps creates default onboarding steps for a new client if none exist.
+func (r *Repository) GetAll(ctx context.Context) ([]Step, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	rows, err := r.db.Query(ctx,
+		`SELECT id, client_id, step, completed, completed_at, created_at
+		 FROM onboarding_steps ORDER BY client_id, created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []Step
+	for rows.Next() {
+		var s Step
+		if err := rows.Scan(&s.ID, &s.ClientID, &s.Step, &s.Completed, &s.CompletedAt, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, s)
+	}
+	return list, nil
+}
+
 func (r *Repository) EnsureDefaultSteps(ctx context.Context, clientID string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

@@ -18,6 +18,7 @@ type Claims struct {
 	Email    string `json:"email"`
 	Role     string `json:"role"`
 	ClientID string `json:"client_id,omitempty"`
+	Name     string `json:"name,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -34,12 +35,13 @@ func NewService(db *pgxpool.Pool) *Service {
 	return &Service{db: db, jwtSecret: []byte(secret)}
 }
 
-func (s *Service) GenerateAccessToken(userID, email, role, clientID string) (string, error) {
+func (s *Service) GenerateAccessToken(userID, email, role, clientID, name string) (string, error) {
 	claims := &Claims{
 		UserID:   userID,
 		Email:    email,
 		Role:     role,
 		ClientID: clientID,
+		Name:     name,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

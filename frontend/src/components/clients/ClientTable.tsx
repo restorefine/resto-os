@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   useReactTable,
@@ -27,7 +27,6 @@ const PROGRESS_BAR_FILL: Record<ClientStatus, string> = {
   churned: "bg-gray-300",
 };
 
-const MONTH_LABEL = new Date().toLocaleString("en-GB", { month: "short", year: "numeric" });
 
 function MonthlyProgressBar({
   progress,
@@ -68,6 +67,10 @@ export function ClientTable({ clients }: ClientTableProps) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ClientStatus | "all">("all");
   const [staffFilter, setStaffFilter] = useState<string>("all");
+  const [monthLabel, setMonthLabel] = useState("");
+  useEffect(() => {
+    setMonthLabel(new Date().toLocaleString("en-GB", { month: "short", year: "numeric" }));
+  }, []);
 
   const staff = useMemo(
     () => ["all", ...Array.from(new Set(clients.map((c) => c.assignedTo)))],
@@ -93,17 +96,27 @@ export function ClientTable({ clients }: ClientTableProps) {
           <span className="flex items-baseline gap-2">
             Client
             <span className="text-[9px] font-normal normal-case tracking-normal text-gray-300">
-              {MONTH_LABEL} progress
+              {monthLabel} progress
             </span>
           </span>
         ),
         cell: ({ row }) => {
           const ob = row.original.onboardingProgress ?? 0;
+          const onboardingDone = ob >= 100;
+          const stepLabel = row.original.currentStepLabel;
           return (
             <div className="min-w-[200px]">
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-gray-900">{row.original.name}</p>
-                {ob < 100 && (
+                {onboardingDone ? (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-50 border border-green-200 text-[9px] font-bold text-green-600 uppercase tracking-wide shrink-0">
+                    ✓ Ready
+                  </span>
+                ) : stepLabel ? (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[9px] font-bold text-amber-600 tracking-wide shrink-0">
+                    {stepLabel}
+                  </span>
+                ) : (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[9px] font-bold text-amber-600 uppercase tracking-wide shrink-0">
                     Onboarding
                   </span>
@@ -114,19 +127,17 @@ export function ClientTable({ clients }: ClientTableProps) {
                 progress={row.original.monthlyProgress}
                 status={row.original.status}
               />
-              {ob < 100 && (
-                <div className="mt-1.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-amber-400 rounded-full transition-all"
-                      style={{ width: `${ob}%` }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-amber-500 tabular-nums w-[28px] text-right shrink-0">
-                    {ob}%
-                  </span>
+              <div className="mt-1.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full transition-all", onboardingDone ? "bg-green-500" : "bg-amber-400")}
+                    style={{ width: `${ob}%` }}
+                  />
                 </div>
-              )}
+                <span className={cn("text-[10px] font-bold tabular-nums w-[28px] text-right shrink-0", onboardingDone ? "text-green-500" : "text-amber-500")}>
+                  {ob}%
+                </span>
+              </div>
             </div>
           );
         },

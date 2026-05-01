@@ -11,10 +11,13 @@ import {
   Play,
   Send,
   AlertCircle,
-  AtSign,
   Pencil,
   MessageSquare,
+  Upload,
+  Link2,
+  Video,
 } from "lucide-react";
+import { useVideoChat, useSendChatMessage, useSendTyping, useChatSSE } from "@/hooks/useVideoChat";
 import {
   useVideo,
   useApproveVideo,
@@ -22,10 +25,12 @@ import {
   useVideoComments,
   useAddVideoComment,
   useUpdateVideoStage,
+  useUploadVideoLink,
 } from "@/hooks/useVideos";
 import { VideoProductionStage, VideoComment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useStore } from "@/store/useStore";
 
 /* ─── constants ─── */
 
@@ -65,9 +70,54 @@ const MEMBER_COLOR: Record<string, string> = {
   Rohit: "bg-red-600",
   Rohin: "bg-blue-600",
   Harpreet: "bg-emerald-600",
+  Kreshina: "bg-purple-600",
+  Arpan: "bg-orange-500",
 };
 
-const TEAM_MEMBERS = ["Rohit", "Rohin", "Harpreet"];
+const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+
+function renderMessageText(text: string, isOwn: boolean) {
+  const parts = text.split(URL_REGEX);
+  return parts.map((part, i) =>
+    URL_REGEX.test(part) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          "underline underline-offset-2 break-all",
+          isOwn ? "text-blue-300 hover:text-blue-200" : "text-blue-600 hover:text-blue-800"
+        )}
+      >
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
+const ARPAN_EMAIL = "arpan@restorefine.co.uk";
+
+function isArpan(user?: { email?: string; role?: string; name?: string } | null) {
+  if (!user) return false;
+  return (
+    user.email === ARPAN_EMAIL ||
+    user.role === "video_editor" ||
+    user.name?.toLowerCase().startsWith("arpan")
+  );
+}
+
+function getDriveFileId(url: string): string | null {
+  const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function hasDriveLink(url?: string): boolean {
+  return !!url && url !== "" && url !== "#";
+}
 
 /* ─── helpers ─── */
 
@@ -79,6 +129,25 @@ function relativeTime(iso: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+function chatTimeLabel(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function chatDateKey(iso: string): string {
+  return new Date(iso).toDateString(); // e.g. "Thu May 01 2026"
+}
+
+function chatDateSeparator(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
 }
 
 /* ─── sub-components ─── */
@@ -140,6 +209,7 @@ function InfoTile({
 /* ─── main page ─── */
 
 type TabKey = "chat" | "feedback" | "reviews";
+type MobileView = "production" | "chat";
 
 export default function VideoDetailPage({
   params,
@@ -149,24 +219,53 @@ export default function VideoDetailPage({
   const { id } = use(params);
   const router = useRouter();
 
+  const { currentUser } = useStore();
   const video = useVideo(id);
   const { data: comments = [] } = useVideoComments(id);
   const addComment = useAddVideoComment(id);
   const updateStage = useUpdateVideoStage();
   const approve = useApproveVideo();
   const requestEdit = useRequestEdit();
+  const uploadLink = useUploadVideoLink();
 
+  const [mobileView, setMobileView] = useState<MobileView>("production");
   const [tab, setTab] = useState<TabKey>("chat");
   const [message, setMessage] = useState("");
   const [authorRole, setAuthorRole] = useState<"team" | "client">("team");
   const [authorName, setAuthorName] = useState("Rohit");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+  const [driveLinkInput, setDriveLinkInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const { data: chatMessages = [] } = useVideoChat(id);
+  const sendChatMessage = useSendChatMessage(id);
+  const sendTyping = useSendTyping(id);
+  const { typingAuthor } = useChatSSE(id);
+  const [chatInput, setChatInput] = useState("");
+
+  const CHAT_MEMBERS = ["rohit", "rohin", "harpreet", "kreshina", "prabish", "arpan"];
+  const canChat =
+    currentUser &&
+    CHAT_MEMBERS.includes(currentUser.name.trim().split(" ")[0].toLowerCase());
+
+  const userIsArpan = isArpan(currentUser);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [comments]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  const handleSendChat = async () => {
+    const text = chatInput.trim();
+    if (!text || sendChatMessage.isPending) return;
+    setChatInput("");
+    await sendChatMessage.mutateAsync(text);
+  };
 
   if (!video) {
     return (
@@ -270,14 +369,14 @@ export default function VideoDetailPage({
         <ArrowLeft size={13} /> Back to videos
       </button>
 
-      {/* Two-column */}
-      <div className="grid grid-cols-[1fr_500px] gap-8 items-start">
-        {/* ── LEFT ── */}
+      {/* Two-column: stacks on mobile, side-by-side on lg+ */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_500px] gap-6 lg:gap-8 items-start">
+        {/* ── LEFT ── always visible */}
         <div>
           {/* Header */}
-          <div className="flex items-start justify-between gap-6 mb-5">
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-black leading-tight">
+          <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="text-xl md:text-2xl font-black tracking-tight text-black leading-tight">
                 {video.title}
               </h1>
               <p className="text-sm text-gray-400 mt-1">
@@ -285,10 +384,10 @@ export default function VideoDetailPage({
                 {uploadedAt && ` · ${relativeTime(uploadedAt)}`}
               </p>
             </div>
-            <div className="flex items-center gap-2 shrink-0 pt-0.5">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => toast.success("Link copied to clipboard")}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 <Share2 size={13} /> Share
               </button>
@@ -296,12 +395,12 @@ export default function VideoDetailPage({
                 <button
                   onClick={handleApprove}
                   disabled={approve.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <CheckCircle2 size={14} /> Approve
                 </button>
               ) : (
-                <span className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-bold">
+                <span className="flex items-center gap-2 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-bold">
                   <CheckCircle2 size={14} /> Approved
                 </span>
               )}
@@ -309,37 +408,95 @@ export default function VideoDetailPage({
           </div>
 
           {/* Video preview */}
-          <a
-            href={video.videoUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block aspect-video bg-gray-950 rounded-2xl overflow-hidden relative group hover:bg-gray-900 transition-colors mb-4"
-          >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                <Play size={24} className="text-white ml-1.5" fill="white" />
+          {hasDriveLink(video.videoUrl) ? (
+            (() => {
+              const fileId = getDriveFileId(video.videoUrl);
+              return fileId ? (
+                <div className="aspect-video rounded-2xl overflow-hidden mb-4 bg-gray-950">
+                  <iframe
+                    src={`https://drive.google.com/file/d/${fileId}/preview`}
+                    className="w-full h-full"
+                    allow="autoplay"
+                    allowFullScreen
+                  />
+                </div>
+              ) : (
+                <a
+                  href={video.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block aspect-video bg-gray-950 rounded-2xl overflow-hidden relative group hover:bg-gray-900 transition-colors mb-4"
+                >
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                      <Play size={24} className="text-white ml-1.5" fill="white" />
+                    </div>
+                  </div>
+                  <span className="absolute top-3 right-4 text-[10px] font-semibold text-white/50 uppercase tracking-widest">
+                    {PLATFORM_LABELS[video.platform] ?? video.platform}
+                  </span>
+                </a>
+              );
+            })()
+          ) : (
+            <div className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center gap-3 mb-4">
+              <Video size={32} className="text-gray-300" />
+              <p className="text-sm text-gray-400 font-medium">
+                {userIsArpan
+                  ? "No video uploaded yet — add a Google Drive link below"
+                  : "Awaiting video upload from editor"}
+              </p>
+            </div>
+          )}
+
+          {/* Arpan: upload / update drive link */}
+          {userIsArpan && (
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-4">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Link2 size={13} className="text-gray-400" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                  {hasDriveLink(video.videoUrl) ? "Update Video Link" : "Upload Video Link"}
+                </p>
+              </div>
+              <div className="px-6 py-5">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    type="url"
+                    value={driveLinkInput}
+                    onChange={(e) => setDriveLinkInput(e.target.value)}
+                    placeholder="https://drive.google.com/file/d/…/view"
+                    className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
+                  />
+                  <button
+                    onClick={async () => {
+                      const url = driveLinkInput.trim();
+                      if (!url) return;
+                      try {
+                        await uploadLink.mutateAsync({ id: video.id, videoUrl: url });
+                        setDriveLinkInput("");
+                        toast.success("Video link saved");
+                      } catch {
+                        toast.error("Failed to save link");
+                      }
+                    }}
+                    disabled={!driveLinkInput.trim() || uploadLink.isPending}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:shrink-0"
+                  >
+                    <Upload size={14} />
+                    {uploadLink.isPending ? "Saving…" : "Save Link"}
+                  </button>
+                </div>
+                {hasDriveLink(video.videoUrl) && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    Current: <a href={video.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate">{video.videoUrl}</a>
+                  </p>
+                )}
               </div>
             </div>
-            {/* fake playbar */}
-            <div className="absolute bottom-0 left-0 right-0 px-5 pb-4 pt-10 bg-gradient-to-t from-black/70 to-transparent">
-              <div className="relative h-1 bg-white/20 rounded-full mb-2.5">
-                <div className="absolute left-0 top-0 h-full w-1/3 bg-red-500 rounded-full" />
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md"
-                  style={{ left: "calc(33% - 6px)" }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-white/50 font-mono">
-                <span>01:24 / 04:15</span>
-                <span className="uppercase tracking-widest text-[9px]">
-                  {PLATFORM_LABELS[video.platform] ?? video.platform}
-                </span>
-              </div>
-            </div>
-          </a>
+          )}
 
           {/* Info tiles */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
             <InfoTile
               label="Stage"
               value={STAGE_DISPLAY[video.productionStage]}
@@ -367,8 +524,31 @@ export default function VideoDetailPage({
             />
           </div>
 
-          {/* Production stage card */}
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-4">
+          {/* Mobile tab switcher — video stays above, toggle production vs chat below */}
+          <div className="flex lg:hidden bg-white border border-gray-200 rounded-xl p-1 mb-5 gap-1">
+            {(
+              [
+                { key: "production" as MobileView, label: "Production" },
+                { key: "chat" as MobileView, label: "Chat & Reviews" },
+              ]
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setMobileView(key)}
+                className={cn(
+                  "flex-1 py-2 text-sm font-semibold rounded-lg transition-colors cursor-pointer",
+                  mobileView === key
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-500 hover:text-gray-800"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Production stage card — always on desktop, toggled on mobile */}
+          <div className={cn("bg-white border border-gray-200 rounded-2xl overflow-hidden mb-4", mobileView === "chat" ? "hidden lg:block" : "block")}>
             <div className="px-6 py-4 border-b border-gray-100">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
                 Production Stage
@@ -473,9 +653,9 @@ export default function VideoDetailPage({
             </div>
           </div>
 
-          {/* Request Edit */}
-          {video.status !== "approved" && (
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          {/* Request Edit — admins/PM only, not video editor */}
+          {video.status !== "approved" && !userIsArpan && (
+            <div className={cn("bg-white border border-gray-200 rounded-2xl overflow-hidden", mobileView === "chat" ? "hidden lg:block" : "block")}>
               <div className="px-6 py-4 border-b border-gray-100">
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
                   Request Changes
@@ -525,7 +705,10 @@ export default function VideoDetailPage({
         </div>
 
         {/* ── RIGHT: Review panel ── */}
-        <div className="sticky top-8 flex flex-col bg-white border border-gray-100 rounded-2xl overflow-hidden h-[calc(100vh-5.5rem)] shadow-sm">
+        <div className={cn(
+          "flex-col bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm min-h-[520px] lg:sticky lg:top-8 lg:h-[calc(100vh-5.5rem)]",
+          mobileView === "production" ? "hidden lg:flex" : "flex"
+        )}>
           {/* Tabs */}
           <div className="flex border-b border-gray-100 px-1 pt-1">
             {(
@@ -562,178 +745,335 @@ export default function VideoDetailPage({
             ))}
           </div>
 
-          {/* Comment cards */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-            {tabComments.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-28 gap-2">
-                <MessageSquare size={22} className="text-gray-200" />
-                <p className="text-xs text-gray-400">No messages yet.</p>
-              </div>
-            )}
+          {/* Chat tab: messenger UI */}
+          {tab === "chat" && (
+            <>
+              {/* Chat messages area */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0 max-h-[400px] lg:max-h-none">
+                {chatMessages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-28 gap-2">
+                    <MessageSquare size={22} className="text-gray-200" />
+                    <p className="text-xs text-gray-400">No messages yet.</p>
+                  </div>
+                )}
+                {chatMessages.map((msg, i) => {
+                  const isOwn = msg.author === currentUser?.name;
+                  const prevMsg = chatMessages[i - 1];
+                  const nextMsg = chatMessages[i + 1];
+                  const isFirstInGroup = !prevMsg || prevMsg.author !== msg.author;
+                  const isLastInGroup = !nextMsg || nextMsg.author !== msg.author;
+                  const showDateSep =
+                    !prevMsg || chatDateKey(prevMsg.created_at) !== chatDateKey(msg.created_at);
 
-            {tabComments.map((comment) => {
-              const isActive = comment.id === activeCommentId;
-              const replies = repliesFor(comment.id);
-              return (
-                <div
-                  key={comment.id}
-                  className={cn(
-                    "border rounded-xl p-4 transition-colors",
-                    isActive
-                      ? "border-red-400 bg-red-50/20"
-                      : "border-gray-100 bg-white",
-                    comment.resolved && "opacity-50"
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <Avatar name={comment.author} role={comment.role} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span
-                          className={cn(
-                            "text-sm font-bold text-gray-900",
-                            comment.resolved && "line-through text-gray-400"
-                          )}
-                        >
-                          {comment.author}
-                        </span>
-                        {comment.timecode ? (
-                          <span
+                  return (
+                    <div key={msg.id}>
+                      {/* Date separator */}
+                      {showDateSep && (
+                        <div className="flex items-center gap-3 my-4">
+                          <div className="flex-1 h-px bg-gray-100" />
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">
+                            {chatDateSeparator(msg.created_at)}
+                          </span>
+                          <div className="flex-1 h-px bg-gray-100" />
+                        </div>
+                      )}
+
+                      <div
+                        className={cn(
+                          "flex items-end gap-2",
+                          isOwn ? "flex-row-reverse" : "flex-row",
+                          !isLastInGroup ? "mb-0.5" : "mb-2"
+                        )}
+                      >
+                        {/* Chat head — shown only on last message of each group */}
+                        {isLastInGroup ? (
+                          <div
+                            title={msg.author}
                             className={cn(
-                              "text-[11px] font-mono px-2 py-0.5 rounded font-bold shrink-0",
-                              isActive
-                                ? "bg-red-600 text-white"
-                                : "bg-gray-100 text-gray-500"
+                              "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black text-white shrink-0 shadow-sm",
+                              MEMBER_COLOR[msg.author] ?? "bg-gray-600"
                             )}
                           >
-                            {comment.timecode}
-                          </span>
+                            {msg.author[0].toUpperCase()}
+                          </div>
                         ) : (
-                          <span className="text-[10px] text-gray-300 tabular-nums shrink-0">
-                            {relativeTime(comment.createdAt)}
-                          </span>
+                          <div className="w-8 shrink-0" />
                         )}
-                      </div>
-                      <p
-                        className={cn(
-                          "text-sm text-gray-600 leading-relaxed",
-                          comment.resolved &&
-                            "line-through text-gray-400"
-                        )}
-                      >
-                        {comment.message}
-                      </p>
-                    </div>
-                  </div>
 
-                  {/* Replies */}
-                  {replies.map((reply) => (
-                    <div
-                      key={reply.id}
-                      className="ml-11 mt-3 border-t border-gray-50 pt-3 flex items-start gap-2"
-                    >
-                      <Avatar name={reply.author} role={reply.role} size="sm" />
-                      <div className="flex-1 bg-gray-50 rounded-lg px-3 py-2.5">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-gray-900">
-                            {reply.author}
-                          </span>
-                          <span className="text-[10px] text-gray-300 tabular-nums">
-                            {relativeTime(reply.createdAt)}
-                          </span>
+                        <div className={cn("flex flex-col max-w-[72%]", isOwn ? "items-end" : "items-start")}>
+                          {/* Name label — first bubble of each group */}
+                          {isFirstInGroup && (
+                            <p className={cn(
+                              "text-[10px] font-semibold mb-1 px-1",
+                              isOwn ? "text-gray-400" : "text-gray-500"
+                            )}>
+                              {isOwn ? "You" : msg.author}
+                            </p>
+                          )}
+
+                          <div
+                            className={cn(
+                              "px-3.5 py-2 text-sm leading-relaxed",
+                              isOwn ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900",
+                              isOwn
+                                ? isLastInGroup ? "rounded-2xl rounded-br-sm" : "rounded-2xl"
+                                : isLastInGroup ? "rounded-2xl rounded-bl-sm" : "rounded-2xl"
+                            )}
+                          >
+                            {renderMessageText(msg.message, isOwn)}
+                          </div>
+
+                          {/* Timestamp — only on last bubble of each group */}
+                          {isLastInGroup && (
+                            <p className="text-[10px] text-gray-400 mt-1 px-1">
+                              {chatTimeLabel(msg.created_at)}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                          {reply.message}
-                        </p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </div>
+                  );
+                })}
 
-          {/* Input */}
-          <div className="shrink-0 border-t border-gray-100 p-4">
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              {/* Formatting toolbar */}
-              <div className="flex items-center gap-0.5 px-3 py-2 border-b border-gray-100 bg-gray-50/50">
-                <button className="p-1.5 hover:bg-gray-100 rounded text-gray-500 font-black text-[13px] transition-colors cursor-pointer">
-                  B
-                </button>
-                <button className="p-1.5 hover:bg-gray-100 rounded text-gray-500 italic text-[13px] transition-colors cursor-pointer">
-                  I
-                </button>
-                <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 transition-colors cursor-pointer">
-                  <Pencil size={12} />
-                </button>
-                <div className="ml-auto flex items-center gap-1.5">
-                  <div className="flex rounded border border-gray-200 overflow-hidden text-[9px] font-bold uppercase tracking-wider bg-white">
-                    {(["team", "client"] as const).map((role) => (
-                      <button
-                        key={role}
-                        onClick={() => {
-                          setAuthorRole(role);
-                          setAuthorName(
-                            role === "team" ? "Rohit" : video.clientName
-                          );
-                        }}
-                        className={cn(
-                          "px-2 py-1 transition-colors cursor-pointer",
-                          authorRole === role
-                            ? "bg-gray-900 text-white"
-                            : "text-gray-400 hover:text-gray-700"
-                        )}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                  </div>
-                  {authorRole === "team" && (
-                    <select
-                      value={authorName}
-                      onChange={(e) => setAuthorName(e.target.value)}
-                      className="text-[10px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none bg-white text-gray-700"
+                {/* Typing indicator */}
+                {typingAuthor && typingAuthor !== currentUser?.name && (
+                  <div className="flex items-end gap-2">
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black text-white shrink-0 shadow-sm",
+                        MEMBER_COLOR[typingAuthor] ?? "bg-gray-600"
+                      )}
                     >
-                      {TEAM_MEMBERS.map((n) => (
-                        <option key={n}>{n}</option>
+                      {typingAuthor[0].toUpperCase()}
+                    </div>
+                    <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+                      <span
+                        className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0ms" }}
+                      />
+                      <span
+                        className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "150ms" }}
+                      />
+                      <span
+                        className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "300ms" }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Chat input */}
+              {canChat ? (
+                <div className="shrink-0 border-t border-gray-100 p-3">
+                  <div className="flex items-end gap-2">
+                    <textarea
+                      value={chatInput}
+                      onChange={(e) => {
+                        setChatInput(e.target.value);
+                        sendTyping();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendChat();
+                        }
+                      }}
+                      placeholder="Message..."
+                      rows={1}
+                      className="flex-1 resize-none bg-gray-100 rounded-2xl px-4 py-2.5 text-sm focus:outline-none text-gray-900 placeholder:text-gray-400 max-h-24 overflow-y-auto"
+                    />
+                    <button
+                      onClick={handleSendChat}
+                      disabled={!chatInput.trim() || sendChatMessage.isPending}
+                      className="w-9 h-9 rounded-full bg-red-600 flex items-center justify-center text-white hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+                    >
+                      <Send size={15} className="-ml-0.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="shrink-0 border-t border-gray-100 p-3 text-center">
+                  <p className="text-xs text-gray-400">Read-only</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Feedback / Reviews tabs: comment cards */}
+          {tab !== "chat" && (
+            <>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 max-h-[400px] lg:max-h-none">
+                {tabComments.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-28 gap-2">
+                    <MessageSquare size={22} className="text-gray-200" />
+                    <p className="text-xs text-gray-400">No messages yet.</p>
+                  </div>
+                )}
+
+                {tabComments.map((comment) => {
+                  const isActive = comment.id === activeCommentId;
+                  const replies = repliesFor(comment.id);
+                  return (
+                    <div
+                      key={comment.id}
+                      className={cn(
+                        "border rounded-xl p-4 transition-colors",
+                        isActive
+                          ? "border-red-400 bg-red-50/20"
+                          : "border-gray-100 bg-white",
+                        comment.resolved && "opacity-50"
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <Avatar name={comment.author} role={comment.role} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span
+                              className={cn(
+                                "text-sm font-bold text-gray-900",
+                                comment.resolved && "line-through text-gray-400"
+                              )}
+                            >
+                              {comment.author}
+                            </span>
+                            {comment.timecode ? (
+                              <span
+                                className={cn(
+                                  "text-[11px] font-mono px-2 py-0.5 rounded font-bold shrink-0",
+                                  isActive
+                                    ? "bg-red-600 text-white"
+                                    : "bg-gray-100 text-gray-500"
+                                )}
+                              >
+                                {comment.timecode}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-gray-300 tabular-nums shrink-0">
+                                {relativeTime(comment.createdAt)}
+                              </span>
+                            )}
+                          </div>
+                          <p
+                            className={cn(
+                              "text-sm text-gray-600 leading-relaxed",
+                              comment.resolved && "line-through text-gray-400"
+                            )}
+                          >
+                            {comment.message}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Replies */}
+                      {replies.map((reply) => (
+                        <div
+                          key={reply.id}
+                          className="ml-11 mt-3 border-t border-gray-50 pt-3 flex items-start gap-2"
+                        >
+                          <Avatar name={reply.author} role={reply.role} size="sm" />
+                          <div className="flex-1 bg-gray-50 rounded-lg px-3 py-2.5">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-bold text-gray-900">
+                                {reply.author}
+                              </span>
+                              <span className="text-[10px] text-gray-300 tabular-nums">
+                                {relativeTime(reply.createdAt)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              {reply.message}
+                            </p>
+                          </div>
+                        </div>
                       ))}
-                    </select>
-                  )}
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input with formatting toolbar — only for Feedback/Reviews */}
+              <div className="shrink-0 border-t border-gray-100 p-4">
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  {/* Formatting toolbar */}
+                  <div className="flex items-center gap-0.5 px-3 py-2 border-b border-gray-100 bg-gray-50/50">
+                    <button className="p-1.5 hover:bg-gray-100 rounded text-gray-500 font-black text-[13px] transition-colors cursor-pointer">
+                      B
+                    </button>
+                    <button className="p-1.5 hover:bg-gray-100 rounded text-gray-500 italic text-[13px] transition-colors cursor-pointer">
+                      I
+                    </button>
+                    <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 transition-colors cursor-pointer">
+                      <Pencil size={12} />
+                    </button>
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <div className="flex rounded border border-gray-200 overflow-hidden text-[9px] font-bold uppercase tracking-wider bg-white">
+                        {(["team", "client"] as const).map((role) => (
+                          <button
+                            key={role}
+                            onClick={() => {
+                              setAuthorRole(role);
+                              setAuthorName(
+                                role === "team" ? "Rohit" : video.clientName
+                              );
+                            }}
+                            className={cn(
+                              "px-2 py-1 transition-colors cursor-pointer",
+                              authorRole === role
+                                ? "bg-gray-900 text-white"
+                                : "text-gray-400 hover:text-gray-700"
+                            )}
+                          >
+                            {role}
+                          </button>
+                        ))}
+                      </div>
+                      {authorRole === "team" && (
+                        <select
+                          value={authorName}
+                          onChange={(e) => setAuthorName(e.target.value)}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none bg-white text-gray-700"
+                        >
+                          {["Rohit", "Rohin", "Harpreet", "Kreshina", "Arpan"].map((n) => (
+                            <option key={n}>{n}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Textarea */}
+                  <textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="Leave a comment..."
+                    rows={2}
+                    className="w-full px-3 py-2.5 text-sm focus:outline-none resize-none text-gray-700 placeholder-gray-400 block"
+                  />
+
+                  {/* Bottom bar */}
+                  <div className="flex items-center justify-end px-3 py-2 border-t border-gray-100">
+                    <button
+                      onClick={handleSend}
+                      disabled={!message.trim()}
+                      className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg disabled:opacity-40 transition-colors cursor-pointer"
+                    >
+                      Post <Send size={11} />
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              {/* Textarea */}
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Leave a comment..."
-                rows={2}
-                className="w-full px-3 py-2.5 text-sm focus:outline-none resize-none text-gray-700 placeholder-gray-400 block"
-              />
-
-              {/* Bottom bar */}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100">
-                <button className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
-                  <AtSign size={15} />
-                </button>
-                <button
-                  onClick={handleSend}
-                  disabled={!message.trim()}
-                  className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg disabled:opacity-40 transition-colors cursor-pointer"
-                >
-                  Post <Send size={11} />
-                </button>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
     </div>
