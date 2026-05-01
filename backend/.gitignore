@@ -1,0 +1,8 @@
+# Environment files — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Build output
+/tmp/
+*.test

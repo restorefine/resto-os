@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/index.go": {
+      "runtime": "go"
+    }
+  },
+  "routes": [
+    { "src": "/(.*)", "dest": "/api/index.go" }
+  ]
+}
